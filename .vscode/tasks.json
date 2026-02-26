@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Debug APK",
+      "type": "shell",
+      "command": "./gradlew assembleDebug",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Install Debug APK",
+      "type": "shell",
+      "command": "./gradlew installDebug",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build & Install",
+      "type": "shell",
+      "command": "./gradlew assembleDebug && ./gradlew installDebug",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run App",
+      "type": "shell",
+      "command": "${env:ANDROID_SDK_ROOT}/platform-tools/adb",
+      "args": [
+        "shell",
+        "am",
+        "start",
+        "-n",
+        "com.blazinghotcode.blazingmusic/.MainActivity"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
