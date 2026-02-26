@@ -4,6 +4,33 @@
 
 This guide walks you through building a fully functional Android music player app.
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Step 1: Project Setup & Dependencies](#step-1-project-setup--dependencies)
+  - [1.1 Update app/build.gradle.kts](#11-update-appbuildgradlekts)
+  - [1.2 Update AndroidManifest.xml](#12-update-androidmanifestxml)
+- [Step 2: Create Data Models](#step-2-create-data-models)
+  - [2.1 Create Song.kt](#21-create-songkt)
+- [Step 3: Create Repository](#step-3-create-repository-for-media-access)
+  - [3.1 Create MusicRepository.kt](#31-create-musicrepositorykt)
+- [Step 4: Create ViewModel](#step-4-create-viewmodel)
+  - [4.1 Create MusicViewModel.kt](#41-create-musicviewmodelkt)
+- [Step 5: Create Music Service](#step-5-create-music-service-background-playback)
+  - [5.1 Create MusicService.kt](#51-create-musicservicekt)
+- [Step 6: Create Layouts](#step-6-create-layouts)
+  - [6.1 Create activity_main.xml](#61-create-activity_mainxml)
+  - [6.2 Create item_song.xml](#62-create-item_songxml)
+- [Step 7: Create Adapter](#step-7-create-adapter-for-recyclerview)
+  - [7.1 Create SongAdapter.kt](#71-create-songadapterkt)
+- [Step 8: Update MainActivity](#step-8-update-mainactivity)
+  - [8.1 Update MainActivity.kt](#81-update-mainactivitykt)
+- [Step 9: Add String Resources](#step-9-add-string-resources)
+  - [9.1 Update res/values/strings.xml](#91-update-resvaluesstringsxml)
+- [Step 10: Build and Run](#step-10-build-and-run)
+- [Next Steps (Enhancements)](#next-steps-enhancements)
+- [Troubleshooting](#troubleshooting)
+
 ---
 
 ## Prerequisites
@@ -807,12 +834,12 @@ Once the basic app works, consider adding:
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| No songs found | Ensure device has music files; grant permission |
-| App crashes | Check Logcat for errors; verify layouts |
-| Permission denied | Go to Settings → Apps → BlazingMusic → Permissions |
-| Build fails | Check Gradle sync; verify dependencies version |
+| Issue             | Solution                                                |
+| ----------------- | ------------------------------------------------------- |
+| No songs found    | Ensure device has music files; grant permission        |
+| App crashes       | Check Logcat for errors; verify layouts                |
+| Permission denied | Go to Settings → Apps → BlazingMusic → Permissions     |
+| Build fails       | Check Gradle sync; verify dependencies version         |
 
 ---
 

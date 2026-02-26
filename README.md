@@ -2,6 +2,18 @@
 
 An Android music player app built with Kotlin and Media3 (ExoPlayer).
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Building the Project](#building-the-project)
+  - [Using Android Studio](#using-android-studio)
+  - [Using Command Line](#using-command-line)
+- [Running on Device/Emulator](#running-on-deviceemulator)
+- [Permissions Required](#permissions-required)
+- [Troubleshooting](#troubleshooting)
+- [Project Structure](#project-structure)
+- [Next Steps](#next-steps)
+
 ## Prerequisites
 
 - Android Studio (Koala or newer)
