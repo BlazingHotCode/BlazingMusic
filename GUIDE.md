@@ -834,12 +834,12 @@ Once the basic app works, consider adding:
 
 ## Troubleshooting
 
-| Issue             | Solution                                                |
-| ----------------- | ------------------------------------------------------- |
-| No songs found    | Ensure device has music files; grant permission        |
-| App crashes       | Check Logcat for errors; verify layouts                |
-| Permission denied | Go to Settings → Apps → BlazingMusic → Permissions     |
-| Build fails       | Check Gradle sync; verify dependencies version         |
+| Issue             | Solution                                              |
+|-------------------|-------------------------------------------------------|
+| No songs found    | Ensure device has music files; grant permission       |
+| App crashes       | Check Logcat for errors; verify layouts               |
+| Permission denied | Go to Settings → Apps → BlazingMusic → Permissions    |
+| Build fails       | Check Gradle sync; verify dependencies version        |
 
 ---
 

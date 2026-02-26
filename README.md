@@ -27,9 +27,11 @@ An Android music player app built with Kotlin and Media3 (ExoPlayer).
 ### Using Android Studio
 
 1. Open the project in Android Studio:
-   ```
+
+   ```text
    File → Open → Select BlazingMusic folder
    ```
+
 2. Wait for Gradle sync to complete
 3. Build the project:
    - **Debug build**: `Build → Make Project` (Ctrl+F9)
@@ -59,6 +61,7 @@ The APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`
 ## Permissions Required
 
 The app requests the following permissions:
+
 - `READ_MEDIA_AUDIO` - Access music files (Android 13+)
 - `READ_EXTERNAL_STORAGE` - Access music files (Android 12 and below)
 - `FOREGROUND_SERVICE` - Background playback
@@ -66,16 +69,16 @@ The app requests the following permissions:
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| No songs found | Ensure device has music files; grant permission |
-| App crashes | Check Logcat for errors; verify layouts |
-| Permission denied | Settings → Apps → BlazingMusic → Permissions |
-| Build fails | Check Gradle sync; verify Android Studio version |
+| Issue             | Solution                                              |
+|-------------------|-------------------------------------------------------|
+| No songs found    | Ensure device has music files; grant permission       |
+| App crashes       | Check Logcat for errors; verify layouts               |
+| Permission denied | Settings → Apps → BlazingMusic → Permissions          |
+| Build fails       | Check Gradle sync; verify Android Studio version      |
 
 ## Project Structure
 
-```
+```text
 BlazingMusic/
 ├── app/
 │   ├── src/main/
