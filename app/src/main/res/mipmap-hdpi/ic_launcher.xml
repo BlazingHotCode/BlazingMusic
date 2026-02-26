@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Fallback launcher icon for pre-API 26 devices -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background color -->
     <item android:drawable="@color/ic_launcher_background"/>
+    <!-- Foreground icon centered -->
     <item
         android:drawable="@drawable/ic_launcher_foreground"
         android:gravity="center"

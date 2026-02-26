@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- App color palette -->
 <resources>
+    <!-- Launcher icon background color (purple) -->
     <color name="ic_launcher_background">#FF6200EE</color>
 </resources>

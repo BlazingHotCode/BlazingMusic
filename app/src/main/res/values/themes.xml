@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- App theme - Dark purple theme for music player -->
 <resources>
     <style name="Theme.BlazingMusic" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Primary brand color (purple) -->
         <item name="colorPrimary">#FF6200EE</item>
         <item name="colorPrimaryVariant">#FF3700B3</item>
         <item name="colorOnPrimary">#FFFFFFFF</item>
+        
+        <!-- Secondary accent color (teal) -->
         <item name="colorSecondary">#FF03DAC5</item>
         <item name="colorSecondaryVariant">#FF018786</item>
         <item name="colorOnSecondary">#FF000000</item>
+        
+        <!-- Status bar and window background (dark) -->
         <item name="android:statusBarColor">#FF121212</item>
         <item name="android:windowBackground">#FF121212</item>
     </style>
