@@ -1,6 +1,6 @@
 # BlazingMusic - Complete Development Guide
 
-> **Progress**: ✅ Step 1 (Dependencies & Manifest) | ✅ Step 2 (Song Model)
+> **Progress**: ✅ Step 1 (Dependencies & Manifest) | ✅ Step 2 (Song Model) | ✅ Step 3 (Repository) | ✅ Step 4 (ViewModel)
 
 This guide walks you through building a fully functional Android music player app.
 
