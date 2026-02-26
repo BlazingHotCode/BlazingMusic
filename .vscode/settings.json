@@ -18,5 +18,9 @@
     }
   ],
   "gradle.useGradleWrapper": true,
-  "gradle.wrapperPath": "${workspaceFolder}/gradlew"
+  "gradle.wrapperPath": "${workspaceFolder}/gradlew",
+  "terminal.integrated.env.linux": {
+    "ANDROID_HOME": "/home/blazinghg/Android/Sdk",
+    "ANDROID_SDK_ROOT": "/home/blazinghg/Android/Sdk"
+  }
 }
