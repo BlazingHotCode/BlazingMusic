@@ -1,5 +1,7 @@
 # BlazingMusic - Complete Development Guide
 
+> **Progress**: ✅ Step 1 Completed (Dependencies & Manifest)
+
 This guide walks you through building a fully functional Android music player app.
 
 ---
@@ -328,8 +330,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 ```
-
-**Note:** Fix the typo in `playNext()`: change `songList.size` to `songList.size`
 
 ---
 
