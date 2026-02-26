@@ -29,6 +29,8 @@
       "type": "shell",
       "command": "${env:ANDROID_SDK_ROOT}/platform-tools/adb",
       "args": [
+        "-s",
+        "R5CX12EG5QA",
         "shell",
         "am",
         "start",
