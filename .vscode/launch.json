@@ -3,10 +3,28 @@
   "configurations": [
     {
       "type": "java",
-      "name": "Attach to Android App",
+      "name": "Debug Android App",
       "request": "attach",
       "hostName": "localhost",
-      "port": 5005
+      "port": 5005,
+      "projectRoot": "${workspaceFolder}",
+      "console": "internalConsole"
+    },
+    {
+      "name": "Gradle: Build & Debug",
+      "type": "java",
+      "request": "launch",
+      "mainClass": "com.blazinghotcode.blazingmusic.MainActivity",
+      "projectRoot": "${workspaceFolder}",
+      "args": "",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Build, Install & Debug",
+      "configurations": ["Debug Android App"],
+      "stopAll": true
     }
   ]
 }

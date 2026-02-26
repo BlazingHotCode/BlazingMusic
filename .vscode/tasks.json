@@ -2,42 +2,66 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Build Debug APK",
+      "label": "Clean",
       "type": "shell",
-      "command": "./gradlew assembleDebug",
+      "command": "./gradlew clean",
       "group": "build",
       "problemMatcher": []
     },
     {
-      "label": "Install Debug APK",
+      "label": "Build Debug APK",
       "type": "shell",
-      "command": "./gradlew installDebug",
+      "command": "./gradlew assembleDebug",
+      "group": "build",
+      "problemMatcher": ["$gradle"]
+    },
+    {
+      "label": "Build Release APK",
+      "type": "shell",
+      "command": "./gradlew assembleRelease",
+      "group": "build",
+      "problemMatcher": ["$gradle"]
+    },
+    {
+      "label": "Sync Gradle",
+      "type": "shell",
+      "command": "./gradlew dependencies",
+      "problemMatcher": ["$gradle"]
+    },
+    {
+      "label": "List Devices",
+      "type": "shell",
+      "command": "${env:ANDROID_SDK_ROOT:-${env:ANDROID_HOME:-${env:ANDROID_SDK_PATH:-/opt/android-sdk}}}/platform-tools/adb devices",
       "problemMatcher": []
     },
     {
-      "label": "Build & Install",
+      "label": "Build & Install Debug",
       "type": "shell",
-      "command": "./gradlew assembleDebug && ./gradlew installDebug",
+      "command": "./gradlew assembleDebug installDebug",
       "group": {
         "kind": "build",
         "isDefault": true
       },
+      "problemMatcher": ["$gradle"]
+    },
+    {
+      "label": "Run App (Debug)",
+      "type": "shell",
+      "command": "./gradlew installDebug && ${env:ANDROID_SDK_ROOT:-${env:ANDROID_HOME:-${env:ANDROID_SDK_PATH:-/opt/android-sdk}}}/platform-tools/adb shell am start -n com.blazinghotcode.blazingmusic/.MainActivity",
       "problemMatcher": []
     },
     {
-      "label": "Run App",
+      "label": "Uninstall App",
       "type": "shell",
-      "command": "${env:ANDROID_SDK_ROOT}/platform-tools/adb",
-      "args": [
-        "-s",
-        "R5CX12EG5QA",
-        "shell",
-        "am",
-        "start",
-        "-n",
-        "com.blazinghotcode.blazingmusic/.MainActivity"
-      ],
+      "command": "${env:ANDROID_SDK_ROOT:-${env:ANDROID_HOME:-${env:ANDROID_SDK_PATH:-/opt/android-sdk}}}/platform-tools/adb uninstall com.blazinghotcode.blazingmusic",
       "problemMatcher": []
+    },
+    {
+      "label": "View Logs",
+      "type": "shell",
+      "command": "${env:ANDROID_SDK_ROOT:-${env:ANDROID_HOME:-${env:ANDROID_SDK_PATH:-/opt/android-sdk}}}/platform-tools/adb logcat | grep -i blazingmusic",
+      "problemMatcher": [],
+      "isBackground": true
     }
   ]
 }

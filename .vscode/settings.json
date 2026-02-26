@@ -1,0 +1,22 @@
+{
+  "files.exclude": {
+    "**/.gradle": true,
+    "**/build": true,
+    "**/app/build": true
+  },
+  "files.associations": {
+    "*.gradle": "gradle",
+    "*.gradle.kts": "gradle"
+  },
+  "editor.formatOnSave": true,
+  "editor.rulers": [100],
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "/usr/lib/jvm/java-17-openjdk-amd64",
+      "default": true
+    }
+  ],
+  "gradle.useGradleWrapper": true,
+  "gradle.wrapperPath": "${workspaceFolder}/gradlew"
+}

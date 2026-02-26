@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "vscjava.vscode-java-debug",
+    "vscjava.vscode-java-dependency",
+    "vscjava.vscode-java-intellicode",
+    "vscjava.vscode-gradle",
+    "vscjava.vscode-kotlin",
+    "richardwillis.vscode-gradle-extension-pack",
+    "eskitip.react-native-react-native-snippets"
+  ]
+}
