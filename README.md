@@ -13,6 +13,7 @@ A simple Android music player app built with Kotlin and Media3 (ExoPlayer).
 ## Screenshots
 
 The app features a dark-themed UI with:
+
 - Song list with album art
 - Mini player at the bottom
 - Material Design 3 styling
@@ -49,7 +50,7 @@ The APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`
 
 ## Project Structure
 
-```
+```text
 BlazingMusic/
 ├── app/
 │   ├── src/main/
@@ -71,6 +72,7 @@ BlazingMusic/
 ## Improvements
 
 See [GUIDE.md](./GUIDE.md) for improvement guides including:
+
 - Previous/Next buttons
 - Seekbar & time display
 - Shuffle & repeat modes
@@ -81,4 +83,6 @@ See [GUIDE.md](./GUIDE.md) for improvement guides including:
 
 ---
 
-*Built with Kotlin & Jetpack*
+## License
+
+MIT License - Built with Kotlin & Jetpack

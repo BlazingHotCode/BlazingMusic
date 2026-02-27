@@ -83,7 +83,7 @@ btnNext.setOnClickListener {
 
 ## 2. Add Seekbar & Time Display
 
-### Update `activity_main.xml`
+### Update `activity_main.xml` (Seekbar)
 
 Add a SeekBar and time TextViews to the player layout:
 
@@ -142,7 +142,7 @@ override fun onPlaybackStateChanged(playbackState: Int) {
 }
 ```
 
-### Update `MainActivity.kt`
+### Update `MainActivity.kt` (Seekbar)
 
 ```kotlin
 private lateinit var seekBar: SeekBar
@@ -203,7 +203,7 @@ override fun onPause() {
 
 ## 3. Add Shuffle & Repeat Modes
 
-### Update `MusicViewModel.kt`
+### Update `MusicViewModel.kt` (Shuffle/Repeat)
 
 ```kotlin
 private val _isShuffleEnabled = MutableLiveData<Boolean>()
@@ -233,7 +233,7 @@ fun playNext() {
 }
 ```
 
-### Update `activity_main.xml`
+### Update `activity_main.xml` (Shuffle/Repeat)
 
 Add shuffle and repeat buttons:
 
@@ -337,7 +337,7 @@ class MusicService : MediaSessionService() {
 
 ## 6. Search Functionality
 
-### Update `activity_main.xml`
+### Update `activity_main.xml` (Search)
 
 Add a search EditText at the top:
 
@@ -358,7 +358,7 @@ Add a search EditText at the top:
     app:layout_constraintTop_toBottomOf="@id/tvTitle"/>
 ```
 
-### Update `MainActivity.kt`
+### Update `MainActivity.kt` (Search)
 
 ```kotlin
 private lateinit var etSearch: EditText
