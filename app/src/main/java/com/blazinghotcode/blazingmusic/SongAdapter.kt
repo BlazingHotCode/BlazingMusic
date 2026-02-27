@@ -14,7 +14,7 @@ class SongAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
         val binding = ItemSongBinding.inflate(
-            LayoutInflate.from(parent.context), 
+            LayoutInflater.from(parent.context), 
             false
         )
         return SongViewHolder(binding)

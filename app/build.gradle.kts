@@ -1,15 +1,22 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.kapt")
 }
 
 android {
     namespace = "com.blazinghotcode.blazingmusic"
-    compileSdk = 34
+    compileSdk = 35
+    buildToolsVersion = "35.0.0"
+
+    buildFeatures {
+        dataBinding = true
+    }
 
     defaultConfig {
         applicationId = "com.blazinghotcode.blazingmusic"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -31,12 +38,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    kotlinOptions {
+        jvmTarget = "17"
     }
+
 }
 
 dependencies {
