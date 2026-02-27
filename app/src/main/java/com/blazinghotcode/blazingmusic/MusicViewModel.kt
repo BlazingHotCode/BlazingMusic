@@ -32,7 +32,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         initializePlayer()
-        loadSongs()
     }
 
     private fun initializePlayer() {

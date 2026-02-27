@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools">
-
-    <androidx.constraintlayout.widget.ConstraintLayout
+<androidx.constraintlayout.widget.ConstraintLayout
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        xmlns:tools="http://schemas.android.com/tools"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#121212"
         tools:context=".MainActivity">
 
-        <TextView
+    <TextView
             android:id="@+id/tvTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -22,7 +21,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
-        <androidx.recyclerview.widget.RecyclerView
+    <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvSongs"
             android:layout_width="0dp"
             android:layout_height="0dp"
@@ -33,7 +32,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
-        <androidx.constraintlayout.widget.ConstraintLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/playerLayout"
             android:layout_width="0dp"
             android:layout_height="150dp"
@@ -44,7 +43,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             tools:visibility="visible">
 
-            <ImageView
+        <ImageView
                 android:id="@+id/ivAlbumArt"
                 android:layout_width="80dp"
                 android:layout_height="80dp"
@@ -55,7 +54,7 @@
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent"/>
 
-            <TextView
+        <TextView
                 android:id="@+id/tvSongTitle"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -72,7 +71,7 @@
                 app:layout_constraintVertical_chainStyle="packed"
                 tools:text="Song Title"/>
 
-            <TextView
+        <TextView
                 android:id="@+id/tvArtist"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -88,7 +87,7 @@
                 app:layout_constraintTop_toBottomOf="@id/tvSongTitle"
                 tools:text="Artist Name"/>
 
-            <ImageButton
+        <ImageButton
                 android:id="@+id/btnPlayPause"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
@@ -101,8 +100,6 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:tint="#FFFFFF"/>
 
-        </androidx.constraintlayout.widget.ConstraintLayout>
-
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-</layout>
+</androidx.constraintlayout.widget.ConstraintLayout>

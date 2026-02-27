@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools">
-
-    <androidx.constraintlayout.widget.ConstraintLayout
+<androidx.constraintlayout.widget.ConstraintLayout
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        xmlns:tools="http://schemas.android.com/tools"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="16dp"
         android:background="?attr/selectableItemBackground">
 
-        <ImageView
+    <ImageView
             android:id="@+id/ivAlbumArt"
             android:layout_width="48dp"
             android:layout_height="48dp"
@@ -19,7 +18,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"/>
 
-        <TextView
+    <TextView
             android:id="@+id/tvTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -35,7 +34,7 @@
             app:layout_constraintVertical_chainStyle="packed"
             tools:text="Song Title"/>
 
-        <TextView
+    <TextView
             android:id="@+id/tvArtist"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -50,7 +49,7 @@
             app:layout_constraintTop_toBottomOf="@id/tvTitle"
             tools:text="Artist"/>
 
-        <TextView
+    <TextView
             android:id="@+id/tvDuration"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -61,6 +60,4 @@
             app:layout_constraintTop_toTopOf="parent"
             tools:text="3:45"/>
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
-
-</layout>
+</androidx.constraintlayout.widget.ConstraintLayout>
