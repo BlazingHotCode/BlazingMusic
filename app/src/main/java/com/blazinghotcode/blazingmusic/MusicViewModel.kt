@@ -27,6 +27,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentPosition = MutableLiveData<Long>()
     val currentPosition: LiveData<Long> = _currentPosition
 
+    private val _duration = MutableLiveData<Long>()
+    var duration: LiveData<Long> = _duration
+
     private var currentSongIndex = 0
     private var songList: List<Song> = emptyList()
 
@@ -36,12 +39,16 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun initializePlayer() {
         exoPlayer = ExoPlayer.Builder(getApplication()).build().apply {
+            val player = this
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(playing: Boolean) {
                     _isPlaying.postValue(playing)
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_READY) {
+                        _duration.postValue(player.duration)
+                    }
                     if (playbackState == Player.STATE_ENDED) {
                         playNext()
                     }

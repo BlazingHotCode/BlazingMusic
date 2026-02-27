@@ -15,6 +15,9 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import android.os.Handler
+import android.os.Looper
+import android.widget.SeekBar
 
 class MainActivity : AppCompatActivity() {
 
@@ -29,6 +32,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnPrevious: ImageButton
     private lateinit var btnNext: ImageButton
+    private lateinit var seekBar: SeekBar
+    private lateinit var tvCurrentTime: TextView
+    private lateinit var tvTotalTime: TextView
+    private val handler = Handler(Looper.getMainLooper())
+    private val updateSeekbarRunnable = object : Runnable {
+        override fun run() {
+            val position = viewModel.getCurrentPosition()
+            seekBar.progress = position.toInt()
+            tvCurrentTime.text = formatDuration(position)
+            handler.postDelayed(this, 1000)
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -58,6 +73,9 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnPrevious = findViewById(R.id.btnPrevious)
         btnNext = findViewById(R.id.btnNext)
+        seekBar = findViewById(R.id.seekBar)
+        tvCurrentTime = findViewById(R.id.tvCurrentTime)
+        tvTotalTime = findViewById(R.id.tvTotalTime)
     }
 
     private fun setupRecyclerView() {
@@ -71,11 +89,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupPlayerControls() {
+        seekBar.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekbar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    viewModel.seekTo(progress.toLong())
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
         btnPlayPause.setOnClickListener {
             viewModel.playPause()
         }
 
-        tnPrevious.setOnClickListener {
+        btnPrevious.setOnClickListener {
             viewModel.playPrevious()
         }
 
@@ -114,6 +142,11 @@ class MainActivity : AppCompatActivity() {
             }
             btnPlayPause.setImageResource(icon)
         }
+
+        viewModel.duration.observe(this) { duration ->
+            seekBar.max = duration.toInt()
+            tvTotalTime.text = formatDuration(duration)
+        }
     }
 
     private fun checkPermissions() {
@@ -132,5 +165,21 @@ class MainActivity : AppCompatActivity() {
                 permissionLauncher.launch(permission)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        handler.post(updateSeekbarRunnable)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(updateSeekbarRunnable)
+    }
+
+    private fun formatDuration(durationMs: Long): String {
+        val minutes = (durationMs / 1000) / 60
+        val seconds = (durationMs / 1000) % 60
+        return String.format("%d:%02d", minutes, seconds)
     }
 }
