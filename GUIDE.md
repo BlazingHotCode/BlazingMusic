@@ -29,6 +29,8 @@ This guide covers improvements to add to your BlazingMusic app.
 
 ### Update `activity_main.xml`
 
+**Position:** Add before the closing `</androidx.constraintlayout.widget.ConstraintLayout>` tag (around line 100), before the `btnPlayPause` button.
+
 Add two new buttons next to the play/pause button:
 
 ```xml
@@ -59,17 +61,19 @@ Add two new buttons next to the play/pause button:
 
 ### Update `MainActivity.kt`
 
+**Position:** Add after line 29 (after `btnPlayPause` declaration).
+
 Add the new buttons and their click listeners:
 
 ```kotlin
 private lateinit var btnPrevious: ImageButton
 private lateinit var btnNext: ImageButton
 
-// In initViews():
+// In initViews() - add after line 56:
 btnPrevious = findViewById(R.id.btnPrevious)
 btnNext = findViewById(R.id.btnNext)
 
-// In setupPlayerControls():
+// In setupPlayerControls() - add after line 72:
 btnPrevious.setOnClickListener {
     viewModel.playPrevious()
 }
@@ -84,6 +88,8 @@ btnNext.setOnClickListener {
 ## 2. Add Seekbar & Time Display
 
 ### Update `activity_main.xml` (Seekbar)
+
+**Position:** Add inside the player layout, before the album art ImageView (around line 80).
 
 Add a SeekBar and time TextViews to the player layout:
 
@@ -108,8 +114,7 @@ Add a SeekBar and time TextViews to the player layout:
     android:textColor="#AAAAAA"
     android:textSize="12sp"
     app:layout_constraintBottom_toBottomOf="parent"
-    app:layout_constraintStart_toStartOf="parent"
-    tools:text="0:00"/>
+    app:layout_constraintStart_toStartOf="parent"/>
 
 <TextView
     android:id="@+id/tvTotalTime"
@@ -119,11 +124,12 @@ Add a SeekBar and time TextViews to the player layout:
     android:textColor="#AAAAAA"
     android:textSize="12sp"
     app:layout_constraintBottom_toBottomOf="parent"
-    app:layout_constraintEnd_toEndOf="parent"
-    tools:text="3:45"/>
+    app:layout_constraintEnd_toEndOf="parent"/>
 ```
 
 ### Update `MusicViewModel.kt`
+
+**Position:** Add after line 28 (after `currentPosition` declaration).
 
 Add position updates:
 
@@ -131,7 +137,7 @@ Add position updates:
 private val _duration = MutableLiveData<Long>()
 val duration: LiveData<Long> = _duration
 
-// Update in initializePlayer listener:
+// In initializePlayer listener (around line 45), update onPlaybackStateChanged:
 override fun onPlaybackStateChanged(playbackState: Int) {
     if (playbackState == Player.STATE_READY) {
         _duration.postValue(player.duration)
@@ -143,6 +149,8 @@ override fun onPlaybackStateChanged(playbackState: Int) {
 ```
 
 ### Update `MainActivity.kt` (Seekbar)
+
+**Position:** Add after line 29 (after btnPlayPause declaration).
 
 ```kotlin
 private lateinit var seekBar: SeekBar
@@ -158,12 +166,12 @@ private val updateSeekbarRunnable = object : Runnable {
     }
 }
 
-// In initViews():
+// In initViews() - add after line 56:
 seekBar = findViewById(R.id.seekBar)
 tvCurrentTime = findViewById(R.id.tvCurrentTime)
 tvTotalTime = findViewById(R.id.tvTotalTime)
 
-// In setupPlayerControls():
+// In setupPlayerControls() - add after line 74:
 seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
     override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
         if (fromUser) {
@@ -174,20 +182,20 @@ seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
     override fun onStopTrackingTouch(seekBar: SeekBar?) {}
 })
 
-// In observeViewModel(), add:
+// In observeViewModel() - add after line 104:
 viewModel.duration.observe(this) { duration ->
     seekBar.max = duration.toInt()
     tvTotalTime.text = formatDuration(duration)
 }
 
-// Add helper function:
+// Add helper function at the end of the class:
 private fun formatDuration(durationMs: Long): String {
     val minutes = (durationMs / 1000) / 60
     val seconds = (durationMs / 1000) % 60
     return String.format("%d:%02d", minutes, seconds)
 }
 
-// Start updating in onResume(), stop in onPause():
+// Add lifecycle methods after onCreate:
 override fun onResume() {
     super.onResume()
     handler.post(updateSeekbarRunnable)
@@ -199,11 +207,21 @@ override fun onPause() {
 }
 ```
 
+Add these imports:
+
+```kotlin
+import android.os.Handler
+import android.os.Looper
+import android.widget.SeekBar
+```
+
 ---
 
 ## 3. Add Shuffle & Repeat Modes
 
 ### Update `MusicViewModel.kt` (Shuffle/Repeat)
+
+**Position:** Add after line 28 (after `currentPosition` declaration).
 
 ```kotlin
 private val _isShuffleEnabled = MutableLiveData<Boolean>()
@@ -212,6 +230,7 @@ val isShuffleEnabled: LiveData<Boolean> = _isShuffleEnabled
 private val _repeatMode = MutableLiveData<Int>() // 0 = off, 1 = repeat all, 2 = repeat one
 val repeatMode: LiveData<Int> = _repeatMode
 
+// Add these methods after playPrevious():
 fun toggleShuffle() {
     _isShuffleEnabled.value = !(_isShuffleEnabled.value ?: false)
 }
@@ -221,6 +240,7 @@ fun toggleRepeat() {
     _repeatMode.value = (current + 1) % 3
 }
 
+// Update playNext() - replace existing method:
 fun playNext() {
     if (songList.isEmpty()) return
     
@@ -233,7 +253,15 @@ fun playNext() {
 }
 ```
 
+Add import:
+
+```kotlin
+import kotlin.random.Random
+```
+
 ### Update `activity_main.xml` (Shuffle/Repeat)
+
+**Position:** Add at the top of the player layout, inside the ConstraintLayout (around line 80).
 
 Add shuffle and repeat buttons:
 
@@ -261,20 +289,67 @@ Add shuffle and repeat buttons:
     app:tint="#AAAAAA"/>
 ```
 
+### Update `MainActivity.kt` (Shuffle/Repeat)
+
+**Position:** Add after btnNext declaration.
+
+```kotlin
+private lateinit var btnShuffle: ImageButton
+private lateinit var btnRepeat: ImageButton
+
+// In initViews() - add after btnNext initialization:
+btnShuffle = findViewById(R.id.btnShuffle)
+btnRepeat = findViewById(R.id.btnRepeat)
+
+// In setupPlayerControls() - add after btnNext listeners:
+btnShuffle.setOnClickListener {
+    viewModel.toggleShuffle()
+}
+
+btnRepeat.setOnClickListener {
+    viewModel.toggleRepeat()
+}
+
+// In observeViewModel() - add after isPlaying observer:
+viewModel.isShuffleEnabled.observe(this) { isShuffleEnabled ->
+    btnShuffle.alpha = if (isShuffleEnabled) 1.0f else 0.5f
+}
+
+viewModel.repeatMode.observe(this) { repeatMode ->
+    when (repeatMode) {
+        0 -> btnRepeat.setImageResource(android.R.drawable.ic_menu_rotate)
+        1 -> btnRepeat.setImageResource(android.R.drawable.ic_menu_rotate)
+        2 -> btnRepeat.setImageResource(android.R.drawable.ic_menu_revert)
+    }
+}
+```
+
 ---
 
 ## 4. Background Playback
 
 The MusicService is already set up. Update `MainActivity.kt` to connect to it:
 
+**Position:** Add new imports and methods.
+
+Add imports:
+
 ```kotlin
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+```
 
+Add after class declaration:
+
+```kotlin
 private var controllerFuture: ListenableFuture<MediaController>? = null
+```
 
+Add lifecycle methods after onPause:
+
+```kotlin
 override fun onStart() {
     super.onStart()
     val sessionToken = SessionToken(this, ComponentName(this, MusicService::class.java))
@@ -291,10 +366,9 @@ override fun onStop() {
 }
 ```
 
-Add to dependencies in `build.gradle.kts`:
+Add to dependencies in `app/build.gradle.kts`:
 
 ```kotlin
-implementation("androidx.media3:media3-session:1.2.1")
 implementation("com.google.common.guava:guava:32.1.3-android")
 ```
 
@@ -302,16 +376,11 @@ implementation("com.google.common.guava:guava:32.1.3-android")
 
 ## 5. Media Notification
 
-The MediaSessionService already handles notifications. Make sure it's properly connected:
+The MediaSessionService already handles notifications. Make sure it's properly connected.
 
-```kotlin
-// In MusicViewModel, connect to the service's player
-fun connectToService() {
-    // Use MediaController to connect to MusicService
-}
-```
+For custom notification, update `MusicService.kt`:
 
-For custom notification, extend `MusicService`:
+**Position:** Replace existing class.
 
 ```kotlin
 class MusicService : MediaSessionService() {
@@ -339,6 +408,8 @@ class MusicService : MediaSessionService() {
 
 ### Update `activity_main.xml` (Search)
 
+**Position:** Add after the RecyclerView (around line 35), before the player layout.
+
 Add a search EditText at the top:
 
 ```xml
@@ -358,38 +429,58 @@ Add a search EditText at the top:
     app:layout_constraintTop_toBottomOf="@id/tvTitle"/>
 ```
 
+Add import:
+
+```kotlin
+import android.text.Editable
+import android.text.TextWatcher
+```
+
 ### Update `MainActivity.kt` (Search)
+
+**Position:** Add after btnNext declaration.
 
 ```kotlin
 private lateinit var etSearch: EditText
 private var allSongs: List<Song> = emptyList()
 
-// In initViews():
+// In initViews() - add after other view initializations:
 etSearch = findViewById(R.id.etSearch)
 
-// In observeViewModel():
+// In observeViewModel() - modify the songs observer:
 viewModel.songs.observe(this) { songs ->
     allSongs = songs
     songAdapter.submitList(songs)
 }
 
-// Add search listener:
-etSearch.addTextChangedListener(object : TextWatcher {
-    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-    override fun afterTextChanged(s: Editable?) {
-        val query = s?.toString()?.lowercase() ?: ""
-        val filtered = if (query.isEmpty()) {
-            allSongs
-        } else {
-            allSongs.filter {
-                it.title.lowercase().contains(query) || 
-                it.artist.lowercase().contains(query)
+// Add after setupPlayerControls():
+private fun setupSearch() {
+    etSearch.addTextChangedListener(object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        override fun afterTextChanged(s: Editable?) {
+            val query = s?.toString()?.lowercase() ?: ""
+            val filtered = if (query.isEmpty()) {
+                allSongs
+            } else {
+                allSongs.filter {
+                    it.title.lowercase().contains(query) || 
+                    it.artist.lowercase().contains(query)
+                }
             }
+            songAdapter.submitList(filtered)
         }
-        songAdapter.submitList(filtered)
-    }
-})
+    })
+}
+
+// Call setupSearch() in onCreate after setupRecyclerView()
+```
+
+Call `setupSearch()` in `onCreate()`:
+
+```kotlin
+// In onCreate, add after setupRecyclerView():
+setupSearch()
 ```
 
 ---
@@ -398,7 +489,12 @@ etSearch.addTextChangedListener(object : TextWatcher {
 
 ### Update `themes.xml`
 
+**Location:** `app/src/main/res/values/themes.xml`
+
+Replace the content:
+
 ```xml
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.BlazingMusic" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">#FF6200EE</item>
@@ -415,18 +511,31 @@ etSearch.addTextChangedListener(object : TextWatcher {
 
 ### Add rounded album art
 
-In `SongAdapter.kt`:
+### Update `SongAdapter.kt`
+
+**Position:** In the bind() function, update the image loading.
+
+Add import:
+
+```kotlin
+import coil.load
+import coil.transform.RoundedCornersTransformation
+```
+
+Replace the image loading code:
 
 ```kotlin
 song.albumArtUri?.let { uri ->
     binding.ivAlbumArt.load(uri) {
         crossfade(true)
-        transformations(RoundedCornersTransformation(8f))
+        transformations(RoundedCornersTransformation(16f))
     }
+} ?: run {
+    binding.ivAlbumArt.setImageResource(android.R.drawable.ic_menu_gallery)
 }
 ```
 
-Add dependency:
+Add dependency in `app/build.gradle.kts`:
 
 ```kotlin
 implementation("io.coil-kt:coil-transformations:2.5.0")
