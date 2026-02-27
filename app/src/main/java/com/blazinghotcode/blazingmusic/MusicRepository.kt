@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class MusicRepository(private val context: Context) {
+
     suspend fun getAllSongs(): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
 
@@ -41,13 +42,7 @@ class MusicRepository(private val context: Context) {
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
-                val title = cursor.getString(titleColumn)
-                val artist = cursor.getString(artistColumn)
-                val album = cursor.getString(albumColumn)
-                val duration = cursor.getLong(durationColumn)
-                val path = cursor.getString(pathColumn)
                 val albumId = cursor.getLong(albumIdColumn)
-
                 val albumArtUri = ContentUris.withAppendedId(
                     Uri.parse("content://media/external/audio/albumart"),
                     albumId
@@ -56,11 +51,11 @@ class MusicRepository(private val context: Context) {
                 songs.add(
                     Song(
                         id = id,
-                        title = title,
-                        artist = artist,
-                        album = album,
-                        duration = duration,
-                        path = path,
+                        title = cursor.getString(titleColumn) ?: "Unknown",
+                        artist = cursor.getString(artistColumn) ?: "Unknown Artist",
+                        album = cursor.getString(albumColumn) ?: "Unknown Album",
+                        duration = cursor.getLong(durationColumn),
+                        path = cursor.getString(pathColumn) ?: "",
                         albumArtUri = albumArtUri
                     )
                 )
