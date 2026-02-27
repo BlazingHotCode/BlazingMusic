@@ -27,6 +27,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvArtist: TextView
     private lateinit var ivAlbumArt: ImageView
     private lateinit var btnPlayPause: ImageButton
+    private lateinit var btnPrevious: ImageButton
+    private lateinit var btnNext: ImageButton
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -54,6 +56,8 @@ class MainActivity : AppCompatActivity() {
         tvArtist = findViewById(R.id.tvArtist)
         ivAlbumArt = findViewById(R.id.ivAlbumArt)
         btnPlayPause = findViewById(R.id.btnPlayPause)
+        btnPrevious = findViewById(R.id.btnPrevious)
+        btnNext = findViewById(R.id.btnNext)
     }
 
     private fun setupRecyclerView() {
@@ -69,6 +73,14 @@ class MainActivity : AppCompatActivity() {
     private fun setupPlayerControls() {
         btnPlayPause.setOnClickListener {
             viewModel.playPause()
+        }
+
+        tnPrevious.setOnClickListener {
+            viewModel.playPrevious()
+        }
+
+        btnNext.setOnClickListener {
+            viewModel.playNext()
         }
 
         playerLayout.setOnClickListener {
