@@ -43,6 +43,8 @@ This guide walks you through building a fully functional Android music player ap
 
 ## Step 1: Project Setup & Dependencies
 
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
+
 ### 1.1 Update `app/build.gradle.kts`
 
 Replace the dependencies section with:
@@ -138,6 +140,8 @@ Add permissions and service declaration:
 
 ## Step 2: Create Data Models
 
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
+
 ### 2.1 Create `Song.kt`
 
 ```kotlin
@@ -157,6 +161,8 @@ data class Song(
 ---
 
 ## Step 3: Create Repository for Media Access
+
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
 
 ### 3.1 Create `MusicRepository.kt`
 
@@ -233,6 +239,8 @@ class MusicRepository(private val context: Context) {
 ---
 
 ## Step 4: Create ViewModel
+
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
 
 ### 4.1 Create `MusicViewModel.kt`
 
@@ -362,6 +370,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
 ## Step 5: Create Music Service (Background Playback)
 
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
+
 ### 5.1 Create `MusicService.kt`
 
 ```kotlin
@@ -408,6 +418,8 @@ class MusicService : MediaSessionService() {
 ---
 
 ## Step 6: Create Layouts
+
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
 
 ### 6.1 Create `activity_main.xml`
 
@@ -591,6 +603,8 @@ class MusicService : MediaSessionService() {
 
 ## Step 7: Create Adapter for RecyclerView
 
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
+
 ### 7.1 Create `SongAdapter.kt`
 
 ```kotlin
@@ -668,6 +682,8 @@ class SongAdapter(
 ---
 
 ## Step 8: Update MainActivity
+
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
 
 ### 8.1 Update `MainActivity.kt`
 
@@ -802,6 +818,8 @@ class MainActivity : AppCompatActivity() {
 
 ## Step 9: Add String Resources
 
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
+
 ### 9.1 Update `res/values/strings.xml`
 
 ```xml
@@ -813,6 +831,8 @@ class MainActivity : AppCompatActivity() {
 ---
 
 ## Step 10: Build and Run
+
+> **Note:** After completing this step, update the progress line at the top of this guide to mark this step as complete.
 
 1. Click **Build** → **Make Project** (or press `Ctrl+F9`)
 2. If build succeeds, run on emulator/device
