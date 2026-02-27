@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
+
     private val repository = MusicRepository(application)
     private var exoPlayer: ExoPlayer? = null
 
@@ -50,7 +51,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun loadSongs() {
+    fun loadSongs() {
         viewModelScope.launch {
             songList = repository.getAllSongs()
             _songs.value = songList
