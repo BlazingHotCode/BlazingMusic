@@ -1,6 +1,6 @@
 # BlazingMusic - Complete Development Guide
 
-> **Progress**: ✅ Step 1 (Dependencies & Manifest) | ✅ Step 2 (Song Model) | ✅ Step 3 (Repository) | ✅ Step 4 (ViewModel) | ✅ Step 5 (Music Service)
+> **Progress**: ✅ Step 1 (Dependencies & Manifest) | ✅ Step 2 (Song Model) | ✅ Step 3 (Repository) | ✅ Step 4 (ViewModel) | ✅ Step 5 (Music Service) | ✅ Step 6 (Layouts)
 
 This guide walks you through building a fully functional Android music player app.
 
@@ -423,6 +423,8 @@ class MusicService : MediaSessionService() {
 
 ### 6.1 Create `activity_main.xml`
 
+> **Location:** `app/src/main/res/layout/activity_main.xml`
+
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout 
@@ -532,6 +534,8 @@ class MusicService : MediaSessionService() {
 ```
 
 ### 6.2 Create `item_song.xml`
+
+> **Location:** `app/src/main/res/layout/item_song.xml`
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
