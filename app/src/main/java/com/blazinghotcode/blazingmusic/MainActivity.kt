@@ -7,6 +7,10 @@ import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Gravity
+import android.view.Menu
+import android.widget.FrameLayout
+import android.widget.PopupMenu
 import android.view.View
 import android.widget.EditText
 import android.widget.ImageButton
@@ -21,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
@@ -52,6 +57,9 @@ class MainActivity : AppCompatActivity() {
     private var allSongs: List<Song> = emptyList()
     private var queueSongs: List<Song> = emptyList()
     private var queueCurrentIndex: Int = -1
+    private var queueDialog: AlertDialog? = null
+    private var queueEditorAdapter: QueueEditorAdapter? = null
+    private var isQueueDragInProgress = false
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val handler = Handler(Looper.getMainLooper())
     private val updateSeekbarRunnable = object : Runnable {
@@ -209,10 +217,16 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.queue.observe(this) { queue ->
             queueSongs = queue
+            if (!isQueueDragInProgress) {
+                queueEditorAdapter?.submitQueue(queueSongs, queueCurrentIndex)
+            }
         }
 
         viewModel.currentQueueIndex.observe(this) { index ->
             queueCurrentIndex = index
+            if (!isQueueDragInProgress) {
+                queueEditorAdapter?.submitQueue(queueSongs, queueCurrentIndex)
+            }
         }
     }
 
@@ -226,18 +240,99 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val queueItems = queueSongs.mapIndexed { index, song ->
-            val prefix = if (index == queueCurrentIndex) "\u25B6 " else ""
-            "$prefix${index + 1}. ${song.title} - ${song.artist}"
-        }.toTypedArray()
+        val queueRecycler = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            clipToPadding = false
+            setPadding(0, 8, 0, 8)
+        }
+        val recyclerContainer = FrameLayout(this).apply {
+            val horizontalPadding = (16 * resources.displayMetrics.density).toInt()
+            setPadding(horizontalPadding, 0, horizontalPadding, 0)
+            addView(
+                queueRecycler,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+                )
+            )
+        }
+        val adapter = QueueEditorAdapter(
+            onSongClick = { index -> viewModel.playSongAt(index) },
+            onItemMenuClick = { index, anchor -> showQueueItemMenu(index, anchor) }
+        )
+        adapter.submitQueue(queueSongs, queueCurrentIndex)
+        queueEditorAdapter = adapter
+        queueRecycler.adapter = adapter
 
-        AlertDialog.Builder(this)
-            .setTitle("Playback Queue")
-            .setItems(queueItems) { _, which ->
-                viewModel.playSongAt(which)
+        val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN,
+            ItemTouchHelper.START or ItemTouchHelper.END
+        ) {
+            override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                super.onSelectedChanged(viewHolder, actionState)
+                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                    isQueueDragInProgress = true
+                }
             }
+
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                val fromIndex = viewHolder.bindingAdapterPosition
+                val toIndex = target.bindingAdapterPosition
+                if (fromIndex == RecyclerView.NO_POSITION || toIndex == RecyclerView.NO_POSITION) {
+                    return false
+                }
+                adapter.moveItem(fromIndex, toIndex)
+                return true
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val index = viewHolder.bindingAdapterPosition
+                if (index == RecyclerView.NO_POSITION) return
+                adapter.removeItem(index)
+                viewModel.removeQueueItem(index)
+            }
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                if (isQueueDragInProgress) {
+                    isQueueDragInProgress = false
+                    viewModel.setQueueOrder(adapter.getQueueSnapshot())
+                }
+            }
+        })
+        itemTouchHelper.attachToRecyclerView(queueRecycler)
+
+        queueDialog?.dismiss()
+        queueDialog = AlertDialog.Builder(this)
+            .setTitle("Playback Queue")
+            .setView(recyclerContainer)
             .setNegativeButton("Close", null)
             .show()
+        queueDialog?.setOnDismissListener {
+            queueEditorAdapter = null
+            queueDialog = null
+        }
+    }
+
+    private fun showQueueItemMenu(index: Int, anchor: View) {
+        PopupMenu(this, anchor).apply {
+            menu.add(Menu.NONE, 1, Menu.NONE, "Play next")
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    1 -> {
+                        viewModel.moveSongToPlayNext(index)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
     }
 
     private fun updateShuffleUi(isEnabled: Boolean) {

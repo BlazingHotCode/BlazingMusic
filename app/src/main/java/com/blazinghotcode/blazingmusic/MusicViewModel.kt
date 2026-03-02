@@ -175,9 +175,84 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         playSong(activeQueue[index])
     }
 
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        if (fromIndex !in activeQueue.indices || toIndex !in activeQueue.indices || fromIndex == toIndex) {
+            return
+        }
+
+        val mutableQueue = activeQueue.toMutableList()
+        val movedSong = mutableQueue.removeAt(fromIndex)
+        mutableQueue.add(toIndex, movedSong)
+        applyQueueMutation(mutableQueue)
+    }
+
+    fun removeQueueItem(index: Int) {
+        if (index !in activeQueue.indices) return
+
+        val mutableQueue = activeQueue.toMutableList()
+        val removedSong = mutableQueue.removeAt(index)
+        applyQueueMutation(mutableQueue)
+
+        val current = _currentSong.value
+        if (current?.id == removedSong.id) {
+            if (activeQueue.isEmpty()) {
+                exoPlayer?.stop()
+                _currentSong.value = null
+                _isPlaying.value = false
+                currentQueueIndexInternal = -1
+                _currentQueueIndex.value = -1
+            } else {
+                val fallbackIndex = index.coerceAtMost(activeQueue.lastIndex)
+                playSongAt(fallbackIndex)
+            }
+        }
+    }
+
+    fun moveSongToPlayNext(index: Int) {
+        if (index !in activeQueue.indices || activeQueue.size < 2) return
+        val currentIndex = currentQueueIndexInternal
+        if (currentIndex == -1 || index == currentIndex || index == currentIndex + 1) return
+
+        val mutableQueue = activeQueue.toMutableList()
+        val selected = mutableQueue.removeAt(index)
+        var insertAt = currentIndex + 1
+        if (index < insertAt) {
+            insertAt -= 1
+        }
+        insertAt = insertAt.coerceIn(0, mutableQueue.size)
+        mutableQueue.add(insertAt, selected)
+        applyQueueMutation(mutableQueue)
+    }
+
+    fun setQueueOrder(newQueue: List<Song>) {
+        if (newQueue.isEmpty() || newQueue.size != activeQueue.size) return
+        val currentIds = activeQueue.map { it.id }.toSet()
+        val newIds = newQueue.map { it.id }.toSet()
+        if (currentIds != newIds) return
+        applyQueueMutation(newQueue.toMutableList())
+    }
+
     private fun buildShuffledQueue(queue: List<Song>): List<Song> {
         if (queue.isEmpty()) return queue
         return queue.shuffled()
+    }
+
+    private fun applyQueueMutation(mutableQueue: MutableList<Song>) {
+        activeQueue = mutableQueue.toList()
+        _queue.value = activeQueue
+
+        val current = _currentSong.value
+        currentQueueIndexInternal = current?.let { nowPlaying ->
+            activeQueue.indexOfFirst { it.id == nowPlaying.id }
+        } ?: -1
+        _currentQueueIndex.value = currentQueueIndexInternal
+
+        if (_isShuffleEnabled.value != true) {
+            normalQueue = activeQueue
+        } else {
+            val queueSongIds = activeQueue.map { it.id }.toSet()
+            normalQueue = normalQueue.filter { it.id in queueSongIds }
+        }
     }
 
     fun getCurrentPosition(): Long {
