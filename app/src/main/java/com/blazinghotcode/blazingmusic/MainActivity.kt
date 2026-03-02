@@ -125,9 +125,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
-        songAdapter = SongAdapter { song ->
-            viewModel.playSong(song)
-        }
+        songAdapter = SongAdapter(
+            onSongClick = { song ->
+                viewModel.playSong(song)
+            },
+            onSongMenuClick = { song, anchor ->
+                showSongOptionsMenu(song, anchor)
+            }
+        )
         rvSongs.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = songAdapter
@@ -301,7 +306,10 @@ class MainActivity : AppCompatActivity() {
                 super.clearView(recyclerView, viewHolder)
                 if (isQueueDragInProgress) {
                     isQueueDragInProgress = false
-                    viewModel.setQueueOrder(adapter.getQueueSnapshot())
+                    viewModel.setQueueOrder(
+                        adapter.getQueueSnapshot(),
+                        adapter.getCurrentIndexSnapshot()
+                    )
                 }
             }
         })
@@ -326,6 +334,27 @@ class MainActivity : AppCompatActivity() {
                 when (item.itemId) {
                     1 -> {
                         viewModel.moveSongToPlayNext(index)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
+    }
+
+    private fun showSongOptionsMenu(song: Song, anchor: View) {
+        PopupMenu(this, anchor).apply {
+            menu.add(Menu.NONE, 2, Menu.NONE, "Play next")
+            menu.add(Menu.NONE, 1, Menu.NONE, "Add to queue")
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    1 -> {
+                        viewModel.addSongToQueue(song)
+                        true
+                    }
+                    2 -> {
+                        viewModel.addSongToPlayNext(song)
                         true
                     }
                     else -> false

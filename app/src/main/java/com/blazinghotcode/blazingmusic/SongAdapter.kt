@@ -1,6 +1,7 @@
 package com.blazinghotcode.blazingmusic
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -10,7 +11,8 @@ import coil.transform.RoundedCornersTransformation
 import com.blazinghotcode.blazingmusic.databinding.ItemSongBinding
 
 class SongAdapter(
-    private val onSongClick: (Song) -> Unit
+    private val onSongClick: (Song) -> Unit,
+    private val onSongMenuClick: (Song, View) -> Unit
 ) : ListAdapter<Song, SongAdapter.SongViewHolder>(SongDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
@@ -35,6 +37,13 @@ class SongAdapter(
                 val position = adapterPosition
                 if (position != RecyclerView.NO_POSITION) {
                     onSongClick(getItem(position))
+                }
+            }
+
+            binding.btnSongMore.setOnClickListener { anchor ->
+                val position = adapterPosition
+                if (position != RecyclerView.NO_POSITION) {
+                    onSongMenuClick(getItem(position), anchor)
                 }
             }
         }

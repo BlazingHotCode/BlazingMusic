@@ -53,6 +53,8 @@ class QueueEditorAdapter(
 
     fun getQueueSnapshot(): List<Song> = songs.toList()
 
+    fun getCurrentIndexSnapshot(): Int = currentIndex
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): QueueViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_queue_song, parent, false)
