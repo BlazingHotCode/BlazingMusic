@@ -13,6 +13,7 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -41,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnPrevious: ImageButton
     private lateinit var btnNext: ImageButton
+    private lateinit var btnQueue: ImageButton
     private lateinit var btnShuffle: ImageButton
     private lateinit var btnRepeat: ImageButton
     private lateinit var seekBar: SeekBar
@@ -48,6 +50,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTotalTime: TextView
     private lateinit var etSearch: EditText
     private var allSongs: List<Song> = emptyList()
+    private var queueSongs: List<Song> = emptyList()
+    private var queueCurrentIndex: Int = -1
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val handler = Handler(Looper.getMainLooper())
     private val updateSeekbarRunnable = object : Runnable {
@@ -103,6 +107,7 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnPrevious = findViewById(R.id.btnPrevious)
         btnNext = findViewById(R.id.btnNext)
+        btnQueue = findViewById(R.id.btnQueue)
         btnShuffle = findViewById(R.id.btnShuffle)
         btnRepeat = findViewById(R.id.btnRepeat)
         seekBar = findViewById(R.id.seekBar)
@@ -142,6 +147,10 @@ class MainActivity : AppCompatActivity() {
 
         btnNext.setOnClickListener {
             viewModel.playNext()
+        }
+
+        btnQueue.setOnClickListener {
+            showQueueDialog()
         }
 
         btnShuffle.setOnClickListener {
@@ -197,6 +206,38 @@ class MainActivity : AppCompatActivity() {
         viewModel.repeatMode.observe(this) { repeatMode ->
             updateRepeatUi(repeatMode)
         }
+
+        viewModel.queue.observe(this) { queue ->
+            queueSongs = queue
+        }
+
+        viewModel.currentQueueIndex.observe(this) { index ->
+            queueCurrentIndex = index
+        }
+    }
+
+    private fun showQueueDialog() {
+        if (queueSongs.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("Playback Queue")
+                .setMessage("Queue is empty.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        val queueItems = queueSongs.mapIndexed { index, song ->
+            val prefix = if (index == queueCurrentIndex) "\u25B6 " else ""
+            "$prefix${index + 1}. ${song.title} - ${song.artist}"
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Playback Queue")
+            .setItems(queueItems) { _, which ->
+                viewModel.playSongAt(which)
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun updateShuffleUi(isEnabled: Boolean) {

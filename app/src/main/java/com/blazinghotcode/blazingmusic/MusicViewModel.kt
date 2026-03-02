@@ -37,12 +37,19 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _duration = MutableLiveData<Long>()
     val duration: LiveData<Long> = _duration
 
+    private val _queue = MutableLiveData<List<Song>>()
+    val queue: LiveData<List<Song>> = _queue
+
+    private val _currentQueueIndex = MutableLiveData<Int>()
+    val currentQueueIndex: LiveData<Int> = _currentQueueIndex
+
     private var currentSongIndex = 0
     private var songList: List<Song> = emptyList()
 
     init {
         _isShuffleEnabled.value = false
         _repeatMode.value = 0
+        _currentQueueIndex.value = -1
         initializePlayer()
     }
 
@@ -70,6 +77,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             songList = repository.getAllSongs()
             _songs.value = songList
+            _queue.value = songList
         }
     }
 
@@ -77,6 +85,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val index = songList.indexOf(song)
         if (index != -1) {
             currentSongIndex = index
+            _currentQueueIndex.value = index
         }
         _currentSong.value = song
 
@@ -136,6 +145,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun seekTo(position: Long) {
         exoPlayer?.seekTo(position)
+    }
+
+    fun playSongAt(index: Int) {
+        if (index !in songList.indices) return
+        currentSongIndex = index
+        playSong(songList[index])
     }
 
     fun getCurrentPosition(): Long {
