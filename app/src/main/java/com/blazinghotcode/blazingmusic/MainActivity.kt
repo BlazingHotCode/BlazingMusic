@@ -57,6 +57,8 @@ class MainActivity : AppCompatActivity() {
     private var allSongs: List<Song> = emptyList()
     private var queueSongs: List<Song> = emptyList()
     private var queueCurrentIndex: Int = -1
+    private var isCurrentlyPlaying = false
+    private var shouldRestartQueue = false
     private var queueDialog: AlertDialog? = null
     private var queueEditorAdapter: QueueEditorAdapter? = null
     private var isQueueDragInProgress = false
@@ -151,7 +153,11 @@ class MainActivity : AppCompatActivity() {
         })
 
         btnPlayPause.setOnClickListener {
-            viewModel.playPause()
+            if (shouldRestartQueue) {
+                viewModel.restartQueueFromBeginning()
+            } else {
+                viewModel.playPause()
+            }
         }
 
         btnPrevious.setOnClickListener {
@@ -199,12 +205,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.isPlaying.observe(this) { isPlaying ->
-            val icon = if (isPlaying) {
-                android.R.drawable.ic_media_pause
-            } else {
-                android.R.drawable.ic_media_play
-            }
-            btnPlayPause.setImageResource(icon)
+            isCurrentlyPlaying = isPlaying
+            updatePrimaryControlButton()
         }
 
         viewModel.duration.observe(this) { duration ->
@@ -232,6 +234,11 @@ class MainActivity : AppCompatActivity() {
             if (!isQueueDragInProgress) {
                 queueEditorAdapter?.submitQueue(queueSongs, queueCurrentIndex)
             }
+        }
+
+        viewModel.shouldRestartQueue.observe(this) { shouldRestart ->
+            shouldRestartQueue = shouldRestart
+            updatePrimaryControlButton()
         }
     }
 
@@ -399,6 +406,21 @@ class MainActivity : AppCompatActivity() {
         btnRepeat.setImageResource(icon)
         ImageViewCompat.setImageTintList(btnRepeat, android.content.res.ColorStateList.valueOf(tint))
         btnRepeat.contentDescription = description
+    }
+
+    private fun updatePrimaryControlButton() {
+        if (shouldRestartQueue) {
+            btnPlayPause.setImageResource(android.R.drawable.ic_menu_revert)
+            btnPlayPause.contentDescription = "Restart queue"
+            return
+        }
+        val icon = if (isCurrentlyPlaying) {
+            android.R.drawable.ic_media_pause
+        } else {
+            android.R.drawable.ic_media_play
+        }
+        btnPlayPause.setImageResource(icon)
+        btnPlayPause.contentDescription = if (isCurrentlyPlaying) "Pause" else "Play"
     }
 
     private fun setupSearch() {

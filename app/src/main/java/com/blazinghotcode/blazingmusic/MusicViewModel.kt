@@ -24,6 +24,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _isPlaying = MutableLiveData<Boolean>()
     val isPlaying: LiveData<Boolean> = _isPlaying
 
+    private val _shouldRestartQueue = MutableLiveData<Boolean>()
+    val shouldRestartQueue: LiveData<Boolean> = _shouldRestartQueue
+
     private val _isShuffleEnabled = MutableLiveData<Boolean>()
     val isShuffleEnabled: LiveData<Boolean> = _isShuffleEnabled
 
@@ -49,6 +52,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     init {
         _isShuffleEnabled.value = false
         _repeatMode.value = 0
+        _shouldRestartQueue.value = false
         _currentQueueIndex.value = -1
         _queue.value = emptyList()
         initializePlayer()
@@ -67,7 +71,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         _duration.postValue(player.duration)
                     }
                     if (playbackState == Player.STATE_ENDED) {
-                        playNext()
+                        handleTrackEnded()
                     }
                 }
             })
@@ -112,6 +116,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             currentQueueIndexInternal = -1
             _currentQueueIndex.value = -1
         }
+        _shouldRestartQueue.value = false
         _currentSong.value = song
         startPlayback(song)
     }
@@ -136,11 +141,30 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playNext() {
+        val repeatMode = _repeatMode.value ?: 0
+        val shouldWrap = repeatMode == 1 || repeatMode == 2
+        playNextInternal(wrapAround = shouldWrap)
+        if (repeatMode == 2) {
+            _repeatMode.value = 0
+        }
+    }
+
+    private fun playNextInternal(wrapAround: Boolean) {
         if (activeQueue.isEmpty()) return
         val nextIndex = if (currentQueueIndexInternal == -1) {
             0
         } else {
-            (currentQueueIndexInternal + 1) % activeQueue.size
+            currentQueueIndexInternal + 1
+        }
+        if (nextIndex >= activeQueue.size) {
+            if (wrapAround) {
+                playSongAt(0)
+            } else {
+                exoPlayer?.pause()
+                _isPlaying.value = false
+                _shouldRestartQueue.value = true
+            }
+            return
         }
         playSongAt(nextIndex)
     }
@@ -176,11 +200,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val current = _repeatMode.value ?: 0
         val nextMode = (current + 1) % 3
         _repeatMode.value = nextMode
-        exoPlayer?.repeatMode = when (nextMode) {
-            1 -> Player.REPEAT_MODE_ALL
-            2 -> Player.REPEAT_MODE_ONE
-            else -> Player.REPEAT_MODE_OFF
-        }
+        exoPlayer?.repeatMode = Player.REPEAT_MODE_OFF
     }
 
     fun seekTo(position: Long) {
@@ -208,9 +228,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         if (index !in activeQueue.indices) return
         currentQueueIndexInternal = index
         _currentQueueIndex.value = index
+        _shouldRestartQueue.value = false
         val selected = activeQueue[index]
         _currentSong.value = selected
         startPlayback(selected)
+    }
+
+    fun restartQueueFromBeginning() {
+        if (activeQueue.isEmpty()) return
+        playSongAt(0)
     }
 
     fun moveQueueItem(fromIndex: Int, toIndex: Int) {
@@ -287,6 +313,17 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun buildShuffledQueue(queue: List<Song>): List<Song> {
         if (queue.isEmpty()) return queue
         return queue.shuffled()
+    }
+
+    private fun handleTrackEnded() {
+        when (_repeatMode.value ?: 0) {
+            2 -> {
+                playNextInternal(wrapAround = true)
+                _repeatMode.postValue(0)
+            }
+            1 -> playNextInternal(wrapAround = true)
+            else -> playNextInternal(wrapAround = false)
+        }
     }
 
     private fun applyQueueMutation(
