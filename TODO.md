@@ -11,7 +11,7 @@
 9. [x] Add search field and live filtering by song title/artist.
 10. [x] Improve UI theme and album art presentation (rounded corners + fallback art).
 11. [x] Add a playback queue screen/state: show the full list of songs queued and the exact order they will play in.
-12. [ ] Rework shuffle behavior: when enabled, randomize the full queue once and keep that fixed shuffled order while navigating next/previous; when disabled, restore the normal queue order.
+12. [x] Rework shuffle behavior: when enabled, randomize the full queue once and keep that fixed shuffled order while navigating next/previous; when disabled, restore the normal queue order.
 13. [ ] Build queue controls: drag to reorder, swipe to remove, and "play next."
 14. [ ] Persist queue + current index across app restarts.
 15. [ ] Add playlist creation and management (create, rename, delete playlists; add/remove songs).

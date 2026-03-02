@@ -9,7 +9,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -43,13 +42,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentQueueIndex = MutableLiveData<Int>()
     val currentQueueIndex: LiveData<Int> = _currentQueueIndex
 
-    private var currentSongIndex = 0
-    private var songList: List<Song> = emptyList()
+    private var normalQueue: List<Song> = emptyList()
+    private var activeQueue: List<Song> = emptyList()
+    private var currentQueueIndexInternal = -1
 
     init {
         _isShuffleEnabled.value = false
         _repeatMode.value = 0
         _currentQueueIndex.value = -1
+        _queue.value = emptyList()
         initializePlayer()
     }
 
@@ -75,16 +76,24 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadSongs() {
         viewModelScope.launch {
-            songList = repository.getAllSongs()
-            _songs.value = songList
-            _queue.value = songList
+            normalQueue = repository.getAllSongs()
+            _songs.value = normalQueue
+            val current = _currentSong.value
+            activeQueue = if (_isShuffleEnabled.value == true) {
+                buildShuffledQueue(normalQueue)
+            } else {
+                normalQueue
+            }
+            _queue.value = activeQueue
+            currentQueueIndexInternal = current?.let { activeQueue.indexOf(it) } ?: -1
+            _currentQueueIndex.value = currentQueueIndexInternal
         }
     }
 
     fun playSong(song: Song) {
-        val index = songList.indexOf(song)
+        val index = activeQueue.indexOf(song)
         if (index != -1) {
-            currentSongIndex = index
+            currentQueueIndexInternal = index
             _currentQueueIndex.value = index
         }
         _currentSong.value = song
@@ -108,28 +117,40 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playNext() {
-        if (songList.isEmpty()) return
-        
-        currentSongIndex = if (_isShuffleEnabled.value == true) {
-            Random.nextInt(songList.size)
+        if (activeQueue.isEmpty()) return
+        val nextIndex = if (currentQueueIndexInternal == -1) {
+            0
         } else {
-            (currentSongIndex + 1) % songList.size
+            (currentQueueIndexInternal + 1) % activeQueue.size
         }
-        playSong(songList[currentSongIndex])
+        playSongAt(nextIndex)
     }
 
     fun playPrevious() {
-        if (songList.isEmpty()) return
-        currentSongIndex = if (currentSongIndex > 0) {
-            currentSongIndex - 1
+        if (activeQueue.isEmpty()) return
+        val previousIndex = if (currentQueueIndexInternal == -1) {
+            activeQueue.lastIndex
+        } else if (currentQueueIndexInternal > 0) {
+            currentQueueIndexInternal - 1
         } else {
-            songList.size - 1
+            activeQueue.lastIndex
         }
-        playSong(songList[currentSongIndex])
+        playSongAt(previousIndex)
     }
 
     fun toggleShuffle() {
-        _isShuffleEnabled.value = !(_isShuffleEnabled.value ?: false)
+        val isEnabled = !(_isShuffleEnabled.value ?: false)
+        _isShuffleEnabled.value = isEnabled
+
+        val current = _currentSong.value
+        activeQueue = if (isEnabled) {
+            buildShuffledQueue(normalQueue)
+        } else {
+            normalQueue
+        }
+        _queue.value = activeQueue
+        currentQueueIndexInternal = current?.let { activeQueue.indexOf(it) } ?: -1
+        _currentQueueIndex.value = currentQueueIndexInternal
     }
 
     fun toggleRepeat() {
@@ -148,9 +169,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playSongAt(index: Int) {
-        if (index !in songList.indices) return
-        currentSongIndex = index
-        playSong(songList[index])
+        if (index !in activeQueue.indices) return
+        currentQueueIndexInternal = index
+        _currentQueueIndex.value = index
+        playSong(activeQueue[index])
+    }
+
+    private fun buildShuffledQueue(queue: List<Song>): List<Song> {
+        if (queue.isEmpty()) return queue
+        return queue.shuffled()
     }
 
     fun getCurrentPosition(): Long {
