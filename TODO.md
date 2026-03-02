@@ -22,10 +22,11 @@
 20. [ ] Request and handle POST_NOTIFICATIONS permission on Android 13+.
 21. [ ] Debounce search input for smoother filtering on large libraries.
 22. [ ] Add fast-scrolling and alphabetical indexing in song list.
-23. [ ] Show empty/error states (no songs, permission denied, load failure).
-24. [ ] Replace deprecated adapterPosition usage in SongAdapter.
-25. [ ] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
-26. [ ] Add analytics/logging hooks for playback errors and skips.
-27. [ ] Add settings screen for default repeat/shuffle behavior and audio focus options.
-28. [ ] Add YouTube API integration to fetch/play songs from YouTube sources.
-29. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
+23. [ ] Modernize the full UI/UX and visual design so the app looks polished and production-ready.
+24. [ ] Show empty/error states (no songs, permission denied, load failure).
+25. [ ] Replace deprecated adapterPosition usage in SongAdapter.
+26. [ ] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
+27. [ ] Add analytics/logging hooks for playback errors and skips.
+28. [ ] Add settings screen for default repeat/shuffle behavior and audio focus options.
+29. [ ] Add YouTube API integration to fetch/play songs from YouTube sources.
+30. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
