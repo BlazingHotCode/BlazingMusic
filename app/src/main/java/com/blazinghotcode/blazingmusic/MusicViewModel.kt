@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -24,16 +25,24 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _isPlaying = MutableLiveData<Boolean>()
     val isPlaying: LiveData<Boolean> = _isPlaying
 
+    private val _isShuffleEnabled = MutableLiveData<Boolean>()
+    val isShuffleEnabled: LiveData<Boolean> = _isShuffleEnabled
+
+    private val _repeatMode = MutableLiveData<Int>() // 0 = off, 1 = repeat all, 2 = repeat one
+    val repeatMode: LiveData<Int> = _repeatMode
+
     private val _currentPosition = MutableLiveData<Long>()
     val currentPosition: LiveData<Long> = _currentPosition
 
     private val _duration = MutableLiveData<Long>()
-    var duration: LiveData<Long> = _duration
+    val duration: LiveData<Long> = _duration
 
     private var currentSongIndex = 0
     private var songList: List<Song> = emptyList()
 
     init {
+        _isShuffleEnabled.value = false
+        _repeatMode.value = 0
         initializePlayer()
     }
 
@@ -91,7 +100,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playNext() {
         if (songList.isEmpty()) return
-        currentSongIndex = (currentSongIndex + 1) % songList.size
+        
+        currentSongIndex = if (_isShuffleEnabled.value == true) {
+            Random.nextInt(songList.size)
+        } else {
+            (currentSongIndex + 1) % songList.size
+        }
         playSong(songList[currentSongIndex])
     }
 
@@ -103,6 +117,21 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             songList.size - 1
         }
         playSong(songList[currentSongIndex])
+    }
+
+    fun toggleShuffle() {
+        _isShuffleEnabled.value = !(_isShuffleEnabled.value ?: false)
+    }
+
+    fun toggleRepeat() {
+        val current = _repeatMode.value ?: 0
+        val nextMode = (current + 1) % 3
+        _repeatMode.value = nextMode
+        exoPlayer?.repeatMode = when (nextMode) {
+            1 -> Player.REPEAT_MODE_ALL
+            2 -> Player.REPEAT_MODE_ONE
+            else -> Player.REPEAT_MODE_OFF
+        }
     }
 
     fun seekTo(position: Long) {

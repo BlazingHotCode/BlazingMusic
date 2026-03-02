@@ -1,23 +1,32 @@
 package com.blazinghotcode.blazingmusic
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.widget.ImageViewCompat
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import android.os.Handler
 import android.os.Looper
-import android.widget.SeekBar
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,9 +41,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnPrevious: ImageButton
     private lateinit var btnNext: ImageButton
+    private lateinit var btnShuffle: ImageButton
+    private lateinit var btnRepeat: ImageButton
     private lateinit var seekBar: SeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvTotalTime: TextView
+    private lateinit var etSearch: EditText
+    private var allSongs: List<Song> = emptyList()
+    private var controllerFuture: ListenableFuture<MediaController>? = null
     private val handler = Handler(Looper.getMainLooper())
     private val updateSeekbarRunnable = object : Runnable {
         override fun run() {
@@ -59,9 +73,25 @@ class MainActivity : AppCompatActivity() {
 
         initViews()
         setupRecyclerView()
+        setupSearch()
         setupPlayerControls()
         observeViewModel()
         checkPermissions()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val sessionToken = SessionToken(this, ComponentName(this, MusicService::class.java))
+        controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+        controllerFuture?.addListener({
+            // Controller ready
+        }, MoreExecutors.directExecutor())
+    }
+
+    override fun onStop() {
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        controllerFuture = null
+        super.onStop()
     }
 
     private fun initViews() {
@@ -73,9 +103,12 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnPrevious = findViewById(R.id.btnPrevious)
         btnNext = findViewById(R.id.btnNext)
+        btnShuffle = findViewById(R.id.btnShuffle)
+        btnRepeat = findViewById(R.id.btnRepeat)
         seekBar = findViewById(R.id.seekBar)
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvTotalTime = findViewById(R.id.tvTotalTime)
+        etSearch = findViewById(R.id.etSearch)
     }
 
     private fun setupRecyclerView() {
@@ -111,6 +144,14 @@ class MainActivity : AppCompatActivity() {
             viewModel.playNext()
         }
 
+        btnShuffle.setOnClickListener {
+            viewModel.toggleShuffle()
+        }
+
+        btnRepeat.setOnClickListener {
+            viewModel.toggleRepeat()
+        }
+
         playerLayout.setOnClickListener {
             // Could open full player screen
         }
@@ -118,6 +159,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun observeViewModel() {
         viewModel.songs.observe(this) { songs ->
+            allSongs = songs
             songAdapter.submitList(songs)
         }
 
@@ -147,6 +189,70 @@ class MainActivity : AppCompatActivity() {
             seekBar.max = duration.toInt()
             tvTotalTime.text = formatDuration(duration)
         }
+
+        viewModel.isShuffleEnabled.observe(this) { isShuffleEnabled ->
+            updateShuffleUi(isShuffleEnabled)
+        }
+
+        viewModel.repeatMode.observe(this) { repeatMode ->
+            updateRepeatUi(repeatMode)
+        }
+    }
+
+    private fun updateShuffleUi(isEnabled: Boolean) {
+        val icon = if (isEnabled) {
+            androidx.media3.ui.R.drawable.exo_styled_controls_shuffle_on
+        } else {
+            androidx.media3.ui.R.drawable.exo_styled_controls_shuffle_off
+        }
+        val tint = if (isEnabled) {
+            ContextCompat.getColor(this, android.R.color.white)
+        } else {
+            ContextCompat.getColor(this, android.R.color.darker_gray)
+        }
+        btnShuffle.setImageResource(icon)
+        ImageViewCompat.setImageTintList(btnShuffle, android.content.res.ColorStateList.valueOf(tint))
+        btnShuffle.contentDescription = if (isEnabled) "Shuffle on" else "Shuffle off"
+    }
+
+    private fun updateRepeatUi(mode: Int) {
+        val icon = when (mode) {
+            1 -> androidx.media3.ui.R.drawable.exo_styled_controls_repeat_all
+            2 -> androidx.media3.ui.R.drawable.exo_styled_controls_repeat_one
+            else -> androidx.media3.ui.R.drawable.exo_styled_controls_repeat_off
+        }
+        val tint = if (mode == 0) {
+            ContextCompat.getColor(this, android.R.color.darker_gray)
+        } else {
+            ContextCompat.getColor(this, android.R.color.white)
+        }
+        val description = when (mode) {
+            1 -> "Repeat all"
+            2 -> "Repeat one"
+            else -> "Repeat off"
+        }
+        btnRepeat.setImageResource(icon)
+        ImageViewCompat.setImageTintList(btnRepeat, android.content.res.ColorStateList.valueOf(tint))
+        btnRepeat.contentDescription = description
+    }
+
+    private fun setupSearch() {
+        etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val query = s?.toString()?.lowercase() ?: ""
+                val filtered = if (query.isEmpty()) {
+                    allSongs
+                } else {
+                    allSongs.filter {
+                        it.title.lowercase().contains(query) ||
+                            it.artist.lowercase().contains(query)
+                    }
+                }
+                songAdapter.submitList(filtered)
+            }
+        })
     }
 
     private fun checkPermissions() {

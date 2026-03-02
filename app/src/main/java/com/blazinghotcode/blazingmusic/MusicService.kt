@@ -1,18 +1,24 @@
 package com.blazinghotcode.blazingmusic
 
 import android.content.Intent
-import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
 class MusicService : MediaSessionService() {
+
     private var mediaSession: MediaSession? = null
 
     override fun onCreate() {
         super.onCreate()
         val player = ExoPlayer.Builder(this).build()
-        mediaSession = MediaSession.Builder(this, player).build()
+        mediaSession = MediaSession.Builder(this, player)
+            .setCallback(MediaSessionCallback())
+            .build()
+    }
+
+    private inner class MediaSessionCallback : MediaSession.Callback {
+        // Customize notification actions here
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {

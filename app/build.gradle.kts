@@ -89,6 +89,7 @@ dependencies {
 
     // Image Loading (for album art)
     implementation("io.coil-kt:coil:2.5.0")
+    implementation("com.google.guava:guava:32.1.3-android")
 
     // RecyclerView
     implementation("androidx.recyclerview:recyclerview:1.3.2")

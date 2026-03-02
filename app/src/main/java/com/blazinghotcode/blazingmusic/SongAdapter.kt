@@ -6,6 +6,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import coil.transform.RoundedCornersTransformation
 import com.blazinghotcode.blazingmusic.databinding.ItemSongBinding
 
 class SongAdapter(
@@ -43,10 +44,13 @@ class SongAdapter(
             binding.tvArtist.text = song.artist
             binding.tvDuration.text = formatDuration(song.duration)
 
-            song.albumArtUri?.let {uri ->
+            song.albumArtUri?.let { uri ->
                 binding.ivAlbumArt.load(uri) {
                     crossfade(true)
+                    transformations(RoundedCornersTransformation(16f))
                 }
+            } ?: run {
+                binding.ivAlbumArt.setImageResource(android.R.drawable.ic_menu_gallery)
             }
         }
 
