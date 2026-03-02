@@ -91,10 +91,26 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playSong(song: Song) {
-        val index = activeQueue.indexOf(song)
+        var index = activeQueue.indexOf(song)
+        if (index == -1) {
+            // If user selects a song from the full library that is no longer in queue,
+            // rebuild queue from full songs and keep shuffle mode behavior.
+            val fullLibrary = _songs.value ?: normalQueue
+            normalQueue = fullLibrary
+            activeQueue = if (_isShuffleEnabled.value == true) {
+                buildShuffledQueue(normalQueue)
+            } else {
+                normalQueue
+            }
+            _queue.value = activeQueue
+            index = activeQueue.indexOf(song)
+        }
         if (index != -1) {
             currentQueueIndexInternal = index
             _currentQueueIndex.value = index
+        } else {
+            currentQueueIndexInternal = -1
+            _currentQueueIndex.value = -1
         }
         _currentSong.value = song
 
