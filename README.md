@@ -69,18 +69,6 @@ BlazingMusic/
 └── settings.gradle.kts
 ```
 
-## Improvements
-
-See [GUIDE.md](./GUIDE.md) for improvement guides including:
-
-- Previous/Next buttons
-- Seekbar & time display
-- Shuffle & repeat modes
-- Background playback
-- Media notification
-- Search functionality
-- Better UI styling
-
 ---
 
 ## License
