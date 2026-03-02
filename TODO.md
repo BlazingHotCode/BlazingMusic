@@ -14,17 +14,18 @@
 12. [ ] Rework shuffle behavior: when enabled, randomize the full queue once and keep that fixed shuffled order while navigating next/previous; when disabled, restore the normal queue order.
 13. [ ] Build queue controls: drag to reorder, swipe to remove, and "play next."
 14. [ ] Persist queue + current index across app restarts.
-15. [ ] Add sort options: title, artist, album, duration, recently added.
-16. [ ] Add "Up Next" section in mini-player (next 3 songs).
-17. [ ] Add media notification actions: previous, play/pause, next, seek.
-18. [ ] Add lock-screen metadata/controls (MediaSession metadata updates).
-19. [ ] Request and handle POST_NOTIFICATIONS permission on Android 13+.
-20. [ ] Debounce search input for smoother filtering on large libraries.
-21. [ ] Add fast-scrolling and alphabetical indexing in song list.
-22. [ ] Show empty/error states (no songs, permission denied, load failure).
-23. [ ] Replace deprecated adapterPosition usage in SongAdapter.
-24. [ ] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
-25. [ ] Add analytics/logging hooks for playback errors and skips.
-26. [ ] Add settings screen for default repeat/shuffle behavior and audio focus options.
-27. [ ] Add YouTube API integration to fetch/play songs from YouTube sources.
-28. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
+15. [ ] Add playlist creation and management (create, rename, delete playlists; add/remove songs).
+16. [ ] Add sort options: title, artist, album, duration, recently added.
+17. [ ] Add "Up Next" section in mini-player (next 3 songs).
+18. [ ] Add media notification actions: previous, play/pause, next, seek.
+19. [ ] Add lock-screen metadata/controls (MediaSession metadata updates).
+20. [ ] Request and handle POST_NOTIFICATIONS permission on Android 13+.
+21. [ ] Debounce search input for smoother filtering on large libraries.
+22. [ ] Add fast-scrolling and alphabetical indexing in song list.
+23. [ ] Show empty/error states (no songs, permission denied, load failure).
+24. [ ] Replace deprecated adapterPosition usage in SongAdapter.
+25. [ ] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
+26. [ ] Add analytics/logging hooks for playback errors and skips.
+27. [ ] Add settings screen for default repeat/shuffle behavior and audio focus options.
+28. [ ] Add YouTube API integration to fetch/play songs from YouTube sources.
+29. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
