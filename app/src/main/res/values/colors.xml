@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- App color palette -->
 <resources>
-    <!-- Launcher icon background color (purple) -->
-    <color name="ic_launcher_background">#FF6200EE</color>
+    <color name="ic_launcher_background">#000000</color>
+
+    <color name="bg_primary">#000000</color>
+    <color name="bg_surface">#12131A</color>
+    <color name="bg_surface_alt">#181A22</color>
+    <color name="bg_chip">#252734</color>
+
+    <color name="accent_lavender">#ED5564</color>
+    <color name="accent_lavender_dark">#6E2B35</color>
+    <color name="accent_tint_bg">#2D1A1E</color>
+
+    <color name="text_primary">#F5F5F7</color>
+    <color name="text_secondary">#B2B4C5</color>
+    <color name="text_muted">#8A8D9E</color>
+
+    <color name="stroke_subtle">#2D3040</color>
 </resources>

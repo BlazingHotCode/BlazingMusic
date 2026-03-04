@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 
 class QueueEditorAdapter(
@@ -78,8 +79,14 @@ class QueueEditorAdapter(
             tvQueueIndex.text = "$prefix${position + 1}."
             tvQueueTitle.text = song.title
             tvQueueArtist.text = song.artist
-            tvQueueTitle.alpha = if (isCurrent) 1.0f else 0.9f
-            tvQueueArtist.alpha = if (isCurrent) 1.0f else 0.85f
+            itemView.setBackgroundResource(
+                if (isCurrent) R.drawable.bg_queue_item_current else R.drawable.bg_queue_item
+            )
+            val titleColor = if (isCurrent) R.color.accent_lavender else R.color.text_primary
+            val secondaryColor = if (isCurrent) R.color.text_primary else R.color.text_secondary
+            tvQueueTitle.setTextColor(ContextCompat.getColor(itemView.context, titleColor))
+            tvQueueArtist.setTextColor(ContextCompat.getColor(itemView.context, secondaryColor))
+            tvQueueIndex.setTextColor(ContextCompat.getColor(itemView.context, secondaryColor))
 
             itemView.setOnClickListener {
                 val index = bindingAdapterPosition

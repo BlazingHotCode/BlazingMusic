@@ -59,7 +59,7 @@ class SongAdapter(
                     transformations(RoundedCornersTransformation(16f))
                 }
             } ?: run {
-                binding.ivAlbumArt.setImageResource(android.R.drawable.ic_menu_gallery)
+                binding.ivAlbumArt.setImageResource(R.drawable.ml_library_music)
             }
         }
 

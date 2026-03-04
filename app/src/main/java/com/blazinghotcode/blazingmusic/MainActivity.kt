@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.TypedValue
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.Menu
 import android.widget.FrameLayout
@@ -30,6 +32,7 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import coil.transform.RoundedCornersTransformation
 import android.os.Handler
 import android.os.Looper
 import com.google.common.util.concurrent.ListenableFuture
@@ -129,6 +132,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvTotalTime = findViewById(R.id.tvTotalTime)
         etSearch = findViewById(R.id.etSearch)
+        tintSearchStartIcon()
     }
 
     private fun setupRecyclerView() {
@@ -210,7 +214,10 @@ class MainActivity : AppCompatActivity() {
                 it.albumArtUri?.let { uri ->
                     ivAlbumArt.load(uri) {
                         crossfade(true)
+                        transformations(RoundedCornersTransformation(20f))
                     }
+                } ?: run {
+                    ivAlbumArt.setImageResource(R.drawable.ml_library_music)
                 }
             }
         }
@@ -259,11 +266,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun showQueueDialog() {
         if (queueSongs.isEmpty()) {
-            AlertDialog.Builder(this)
+            dialogBuilder()
                 .setTitle("Playback Queue")
                 .setMessage("Queue is empty.")
                 .setPositiveButton("OK", null)
-                .show()
+                .showStyledDialog()
             return
         }
 
@@ -273,7 +280,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 8, 0, 8)
         }
         val recyclerContainer = FrameLayout(this).apply {
-            val horizontalPadding = (16 * resources.displayMetrics.density).toInt()
+            val horizontalPadding = (12 * resources.displayMetrics.density).toInt()
             setPadding(horizontalPadding, 0, horizontalPadding, 0)
             addView(
                 queueRecycler,
@@ -338,11 +345,11 @@ class MainActivity : AppCompatActivity() {
         itemTouchHelper.attachToRecyclerView(queueRecycler)
 
         queueDialog?.dismiss()
-        queueDialog = AlertDialog.Builder(this)
+        queueDialog = dialogBuilder()
             .setTitle("Playback Queue")
             .setView(recyclerContainer)
             .setNegativeButton("Close", null)
-            .show()
+            .showStyledDialog()
         queueDialog?.setOnDismissListener {
             queueEditorAdapter = null
             queueDialog = null
@@ -350,7 +357,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showQueueItemMenu(index: Int, anchor: View) {
-        PopupMenu(this, anchor).apply {
+        PopupMenu(ContextThemeWrapper(this, R.style.ThemeOverlay_BlazingMusic_PopupMenu), anchor).apply {
             menu.add(Menu.NONE, 1, Menu.NONE, "Play next")
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
@@ -366,7 +373,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSongOptionsMenu(song: Song, anchor: View) {
-        PopupMenu(this, anchor).apply {
+        PopupMenu(ContextThemeWrapper(this, R.style.ThemeOverlay_BlazingMusic_PopupMenu), anchor).apply {
             menu.add(Menu.NONE, 2, Menu.NONE, "Play next")
             menu.add(Menu.NONE, 1, Menu.NONE, "Add to queue")
             menu.add(Menu.NONE, 3, Menu.NONE, "Add to playlist")
@@ -393,14 +400,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlaylistBrowserDialog() {
         if (playlists.isEmpty()) {
-            AlertDialog.Builder(this)
+            dialogBuilder()
                 .setTitle("Playlists")
                 .setMessage("No playlists yet.")
                 .setPositiveButton("Create") { _, _ ->
                     showCreatePlaylistDialog()
                 }
                 .setNegativeButton("Close", null)
-                .show()
+                .showStyledDialog()
             return
         }
 
@@ -408,7 +415,7 @@ class MainActivity : AppCompatActivity() {
             "${playlist.name} (${playlist.songPaths.size})"
         }.toTypedArray()
 
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("Playlists")
             .setItems(items) { _, index ->
                 val selected = playlists.getOrNull(index) ?: return@setItems
@@ -418,12 +425,12 @@ class MainActivity : AppCompatActivity() {
                 showCreatePlaylistDialog()
             }
             .setNegativeButton("Close", null)
-            .show()
+            .showStyledDialog()
     }
 
     private fun showPlaylistActionsDialog(playlist: Playlist) {
         val actions = arrayOf("View songs", "Add songs", "Rename", "Delete")
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle(playlist.name)
             .setItems(actions) { _, index ->
                 when (index) {
@@ -436,14 +443,14 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Back") { _, _ ->
                 showPlaylistBrowserDialog()
             }
-            .show()
+            .showStyledDialog()
     }
 
     private fun showPlaylistSongsDialog(playlistId: Long) {
         val playlist = playlists.find { it.id == playlistId } ?: return
         val playlistSongs = viewModel.getPlaylistSongs(playlistId)
         if (playlistSongs.isEmpty()) {
-            AlertDialog.Builder(this)
+            dialogBuilder()
                 .setTitle(playlist.name)
                 .setMessage("This playlist has no songs.")
                 .setPositiveButton("Add songs") { _, _ ->
@@ -452,12 +459,12 @@ class MainActivity : AppCompatActivity() {
                 .setNegativeButton("Back") { _, _ ->
                     showPlaylistActionsDialog(playlist)
                 }
-                .show()
+                .showStyledDialog()
             return
         }
 
         val items = playlistSongs.map { "${it.title} - ${it.artist}" }.toTypedArray()
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle(playlist.name)
             .setItems(items) { _, index ->
                 val selectedSong = playlistSongs.getOrNull(index) ?: return@setItems
@@ -472,24 +479,24 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Back") { _, _ ->
                 showPlaylistActionsDialog(playlist)
             }
-            .show()
+            .showStyledDialog()
     }
 
     private fun showAddSongToPlaylistDialog(song: Song) {
         if (playlists.isEmpty()) {
-            AlertDialog.Builder(this)
+            dialogBuilder()
                 .setTitle("Add to playlist")
                 .setMessage("No playlists yet.")
                 .setPositiveButton("Create") { _, _ ->
                     showCreatePlaylistDialog(song)
                 }
                 .setNegativeButton("Cancel", null)
-                .show()
+                .showStyledDialog()
             return
         }
 
         val names = playlists.map { it.name }.toTypedArray()
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("Add to playlist")
             .setItems(names) { _, index ->
                 val playlist = playlists.getOrNull(index) ?: return@setItems
@@ -504,14 +511,15 @@ class MainActivity : AppCompatActivity() {
                 showCreatePlaylistDialog(song)
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .showStyledDialog()
     }
 
     private fun showCreatePlaylistDialog(songToAdd: Song? = null) {
         val input = EditText(this).apply {
             hint = "Playlist name"
+            applyDialogInputStyle()
         }
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("Create playlist")
             .setView(input)
             .setPositiveButton("Create") { _, _ ->
@@ -529,15 +537,16 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .showStyledDialog()
     }
 
     private fun showRenamePlaylistDialog(playlist: Playlist) {
         val input = EditText(this).apply {
             setText(playlist.name)
             setSelection(playlist.name.length)
+            applyDialogInputStyle()
         }
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("Rename playlist")
             .setView(input)
             .setPositiveButton("Save") { _, _ ->
@@ -549,11 +558,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .showStyledDialog()
     }
 
     private fun showDeletePlaylistDialog(playlist: Playlist) {
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("Delete playlist")
             .setMessage("Delete \"${playlist.name}\"?")
             .setPositiveButton("Delete") { _, _ ->
@@ -565,7 +574,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .showStyledDialog()
     }
 
     private fun showAddSongsToPlaylistDialog(playlistId: Long) {
@@ -578,7 +587,7 @@ class MainActivity : AppCompatActivity() {
         val songItems = allSongs.map { "${it.title} - ${it.artist}" }.toTypedArray()
         val checkedItems = BooleanArray(allSongs.size)
 
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("Add songs to ${playlist.name}")
             .setMultiChoiceItems(songItems, checkedItems) { _, which, isChecked ->
                 checkedItems[which] = isChecked
@@ -593,7 +602,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .showStyledDialog()
     }
 
     private fun showRemoveSongsFromPlaylistDialog(playlistId: Long) {
@@ -607,7 +616,7 @@ class MainActivity : AppCompatActivity() {
         val songItems = playlistSongs.map { "${it.title} - ${it.artist}" }.toTypedArray()
         val checkedItems = BooleanArray(playlistSongs.size)
 
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("Remove songs from ${playlist.name}")
             .setMultiChoiceItems(songItems, checkedItems) { _, which, isChecked ->
                 checkedItems[which] = isChecked
@@ -625,7 +634,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .showStyledDialog()
     }
 
     private fun showToast(message: String) {
@@ -634,14 +643,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateShuffleUi(isEnabled: Boolean) {
         val icon = if (isEnabled) {
-            androidx.media3.ui.R.drawable.exo_styled_controls_shuffle_on
+            R.drawable.ml_shuffle_on
         } else {
-            androidx.media3.ui.R.drawable.exo_styled_controls_shuffle_off
+            R.drawable.ml_shuffle
         }
         val tint = if (isEnabled) {
-            ContextCompat.getColor(this, android.R.color.white)
+            ContextCompat.getColor(this, R.color.accent_lavender)
         } else {
-            ContextCompat.getColor(this, android.R.color.darker_gray)
+            ContextCompat.getColor(this, R.color.text_secondary)
         }
         btnShuffle.setImageResource(icon)
         ImageViewCompat.setImageTintList(btnShuffle, android.content.res.ColorStateList.valueOf(tint))
@@ -650,14 +659,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateRepeatUi(mode: Int) {
         val icon = when (mode) {
-            1 -> androidx.media3.ui.R.drawable.exo_styled_controls_repeat_all
-            2 -> androidx.media3.ui.R.drawable.exo_styled_controls_repeat_one
-            else -> androidx.media3.ui.R.drawable.exo_styled_controls_repeat_off
+            1 -> R.drawable.ml_repeat_on
+            2 -> R.drawable.ml_repeat_one_on
+            else -> R.drawable.ml_repeat
         }
         val tint = if (mode == 0) {
-            ContextCompat.getColor(this, android.R.color.darker_gray)
+            ContextCompat.getColor(this, R.color.text_secondary)
         } else {
-            ContextCompat.getColor(this, android.R.color.white)
+            ContextCompat.getColor(this, R.color.accent_lavender)
         }
         val description = when (mode) {
             1 -> "Repeat all"
@@ -671,14 +680,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun updatePrimaryControlButton() {
         if (shouldRestartQueue) {
-            btnPlayPause.setImageResource(android.R.drawable.ic_menu_revert)
+            btnPlayPause.setImageResource(R.drawable.ml_replay)
             btnPlayPause.contentDescription = "Restart queue"
             return
         }
         val icon = if (isCurrentlyPlaying) {
-            android.R.drawable.ic_media_pause
+            R.drawable.ml_pause
         } else {
-            android.R.drawable.ic_media_play
+            R.drawable.ml_play
         }
         btnPlayPause.setImageResource(icon)
         btnPlayPause.contentDescription = if (isCurrentlyPlaying) "Pause" else "Play"
@@ -701,6 +710,27 @@ class MainActivity : AppCompatActivity() {
                 songAdapter.submitList(filtered)
             }
         })
+    }
+
+    private fun tintSearchStartIcon() {
+        val drawables = etSearch.compoundDrawablesRelative
+        val start = drawables[0]?.mutate()
+        start?.setTint(ContextCompat.getColor(this, R.color.text_muted))
+        etSearch.setCompoundDrawablesRelativeWithIntrinsicBounds(
+            start,
+            drawables[1],
+            drawables[2],
+            drawables[3]
+        )
+    }
+
+    private fun EditText.applyDialogInputStyle() {
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+        setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_muted))
+        setBackgroundResource(R.drawable.bg_search_field)
+        val horizontal = (12 * resources.displayMetrics.density).toInt()
+        val vertical = (10 * resources.displayMetrics.density).toInt()
+        setPadding(horizontal, vertical, horizontal, vertical)
     }
 
     private fun checkPermissions() {
@@ -735,5 +765,24 @@ class MainActivity : AppCompatActivity() {
         val minutes = (durationMs / 1000) / 60
         val seconds = (durationMs / 1000) % 60
         return String.format("%d:%02d", minutes, seconds)
+    }
+
+    private fun dialogBuilder(): AlertDialog.Builder {
+        return AlertDialog.Builder(this)
+    }
+
+    private fun AlertDialog.Builder.showStyledDialog(): AlertDialog {
+        val dialog = show()
+        runCatching {
+            val buttons = listOf(
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE),
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE),
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+            )
+            buttons.forEach { button ->
+                button?.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            }
+        }
+        return dialog
     }
 }
