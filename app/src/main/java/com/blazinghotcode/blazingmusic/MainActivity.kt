@@ -29,6 +29,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import androidx.core.widget.ImageViewCompat
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -60,6 +63,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnQueue: ImageButton
     private lateinit var btnShuffle: ImageButton
     private lateinit var btnRepeat: ImageButton
+    private lateinit var bottomNav: View
+    private lateinit var navHome: View
+    private lateinit var navPlaylists: View
     private lateinit var seekBar: SeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvTotalTime: TextView
@@ -70,6 +76,7 @@ class MainActivity : AppCompatActivity() {
     private var queueCurrentIndex: Int = -1
     private var isCurrentlyPlaying = false
     private var shouldRestartQueue = false
+    private lateinit var playlistContainer: View
     private var queueDialog: BottomSheetDialog? = null
     private var queueEditorAdapter: QueueEditorAdapter? = null
     private var isQueueDragInProgress = false
@@ -133,11 +140,16 @@ class MainActivity : AppCompatActivity() {
         btnQueue = findViewById(R.id.btnQueue)
         btnShuffle = findViewById(R.id.btnShuffle)
         btnRepeat = findViewById(R.id.btnRepeat)
+        bottomNav = findViewById(R.id.bottomNav)
+        navHome = findViewById(R.id.navHome)
+        navPlaylists = findViewById(R.id.navPlaylists)
         seekBar = findViewById(R.id.seekBar)
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvTotalTime = findViewById(R.id.tvTotalTime)
         etSearch = findViewById(R.id.etSearch)
+        playlistContainer = findViewById(R.id.playlistContainer)
         tintSearchStartIcon()
+        applySystemInsets()
     }
 
     private fun setupRecyclerView() {
@@ -201,8 +213,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupPlaylistControls() {
         btnPlaylists.setOnClickListener {
-            showPlaylistBrowserDialog()
+            openPlaylistsTab()
         }
+        navHome.setOnClickListener { openHomeTab() }
+        navPlaylists.setOnClickListener { openPlaylistsTab() }
     }
 
     private fun observeViewModel() {
@@ -765,6 +779,113 @@ class MainActivity : AppCompatActivity() {
 
     private fun dialogBuilder(): AlertDialog.Builder {
         return AlertDialog.Builder(this)
+    }
+
+    private fun openPlaylists() {
+        openPlaylistsTab()
+    }
+
+    fun openPlaylistsTab() {
+        if (playlistContainer.visibility == View.VISIBLE &&
+            supportFragmentManager.findFragmentById(R.id.playlistContainer) is PlaylistsFragment
+        ) {
+            return
+        }
+        playlistContainer.visibility = View.VISIBLE
+        supportFragmentManager.popBackStack(null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
+        supportFragmentManager.beginTransaction()
+            .setCustomAnimations(R.anim.slide_in_right, R.anim.slide_out_left)
+            .replace(R.id.playlistContainer, PlaylistsFragment())
+            .commit()
+        updateBottomNavSelection(homeSelected = false)
+    }
+
+    fun openPlaylistSongs(playlistId: Long, playlistName: String) {
+        playlistContainer.visibility = View.VISIBLE
+        supportFragmentManager.beginTransaction()
+            .setCustomAnimations(
+                R.anim.slide_in_right,
+                R.anim.slide_out_left,
+                R.anim.slide_in_left,
+                R.anim.slide_out_right
+            )
+            .replace(R.id.playlistContainer, PlaylistSongsFragment.newInstance(playlistId, playlistName))
+            .addToBackStack("playlist_songs")
+            .commit()
+        updateBottomNavSelection(homeSelected = false)
+    }
+
+    fun openHomeTab() {
+        supportFragmentManager.popBackStack(null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
+        playlistContainer.visibility = View.GONE
+        updateBottomNavSelection(homeSelected = true)
+    }
+
+    override fun onBackPressed() {
+        if (playlistContainer.visibility == View.VISIBLE) {
+            if (supportFragmentManager.backStackEntryCount > 0) {
+                supportFragmentManager.popBackStack()
+            } else {
+                openHomeTab()
+            }
+            return
+        }
+        super.onBackPressed()
+    }
+
+    private fun updateBottomNavSelection(homeSelected: Boolean) {
+        val homeIcon = findViewById<ImageView>(R.id.ivNavHome)
+        val homeText = findViewById<TextView>(R.id.tvNavHome)
+        val playlistIcon = findViewById<ImageView>(R.id.ivNavPlaylists)
+        val playlistText = findViewById<TextView>(R.id.tvNavPlaylists)
+
+        if (homeSelected) {
+            homeIcon.setImageResource(R.drawable.ml_home_filled)
+            homeIcon.setColorFilter(ContextCompat.getColor(this, R.color.accent_lavender))
+            homeText.setTextColor(ContextCompat.getColor(this, R.color.accent_lavender))
+            playlistIcon.setImageResource(R.drawable.ml_library_music_outlined)
+            playlistIcon.setColorFilter(ContextCompat.getColor(this, R.color.text_secondary))
+            playlistText.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+        } else {
+            homeIcon.setImageResource(R.drawable.ml_home_outlined)
+            homeIcon.setColorFilter(ContextCompat.getColor(this, R.color.text_secondary))
+            homeText.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+            playlistIcon.setImageResource(R.drawable.ml_library_music_filled)
+            playlistIcon.setColorFilter(ContextCompat.getColor(this, R.color.accent_lavender))
+            playlistText.setTextColor(ContextCompat.getColor(this, R.color.accent_lavender))
+        }
+    }
+
+    private fun applySystemInsets() {
+        val originalBottomPadding = bottomNav.paddingBottom
+        val layoutParams = bottomNav.layoutParams as android.view.ViewGroup.MarginLayoutParams
+        val originalBottomMargin = layoutParams.bottomMargin
+        ViewCompat.setOnApplyWindowInsetsListener(bottomNav) { view, insets ->
+            val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            val tappableBottom = insets.getInsets(WindowInsetsCompat.Type.tappableElement()).bottom
+            val gestureBottom = insets.getInsets(WindowInsetsCompat.Type.systemGestures()).bottom
+            var bottomInset = maxOf(navBottom, tappableBottom, gestureBottom)
+            if (bottomInset == 0) {
+                bottomInset = getNavigationBarHeightFallback()
+            }
+            view.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {
+                bottomMargin = originalBottomMargin + bottomInset
+            }
+            view.setPadding(
+                view.paddingLeft,
+                view.paddingTop,
+                view.paddingRight,
+                originalBottomPadding
+            )
+            insets
+        }
+        ViewCompat.requestApplyInsets(bottomNav)
+    }
+
+    private fun getNavigationBarHeightFallback(): Int {
+        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        if (resourceId <= 0) return 0
+        return resources.getDimensionPixelSize(resourceId)
     }
 
     private fun showSimpleBottomSheet(

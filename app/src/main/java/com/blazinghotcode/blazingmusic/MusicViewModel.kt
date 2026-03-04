@@ -202,12 +202,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playPrevious() {
         if (activeQueue.isEmpty()) return
+        val canWrapToEnd = (_repeatMode.value ?: 0) == 1 // Repeat all only
         val previousIndex = if (currentQueueIndexInternal == -1) {
-            activeQueue.lastIndex
+            if (canWrapToEnd) activeQueue.lastIndex else 0
         } else if (currentQueueIndexInternal > 0) {
             currentQueueIndexInternal - 1
         } else {
-            activeQueue.lastIndex
+            if (canWrapToEnd) activeQueue.lastIndex else 0
         }
         playSongAt(previousIndex)
     }
