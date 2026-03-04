@@ -17,6 +17,7 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -47,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnPrevious: ImageButton
     private lateinit var btnNext: ImageButton
+    private lateinit var btnPlaylists: ImageButton
     private lateinit var btnQueue: ImageButton
     private lateinit var btnShuffle: ImageButton
     private lateinit var btnRepeat: ImageButton
@@ -55,6 +57,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTotalTime: TextView
     private lateinit var etSearch: EditText
     private var allSongs: List<Song> = emptyList()
+    private var playlists: List<Playlist> = emptyList()
     private var queueSongs: List<Song> = emptyList()
     private var queueCurrentIndex: Int = -1
     private var isCurrentlyPlaying = false
@@ -89,6 +92,7 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupSearch()
         setupPlayerControls()
+        setupPlaylistControls()
         observeViewModel()
         checkPermissions()
     }
@@ -117,6 +121,7 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnPrevious = findViewById(R.id.btnPrevious)
         btnNext = findViewById(R.id.btnNext)
+        btnPlaylists = findViewById(R.id.btnPlaylists)
         btnQueue = findViewById(R.id.btnQueue)
         btnShuffle = findViewById(R.id.btnShuffle)
         btnRepeat = findViewById(R.id.btnRepeat)
@@ -185,6 +190,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupPlaylistControls() {
+        btnPlaylists.setOnClickListener {
+            showPlaylistBrowserDialog()
+        }
+    }
+
     private fun observeViewModel() {
         viewModel.songs.observe(this) { songs ->
             allSongs = songs
@@ -227,6 +238,10 @@ class MainActivity : AppCompatActivity() {
             if (!isQueueDragInProgress) {
                 queueEditorAdapter?.submitQueue(queueSongs, queueCurrentIndex)
             }
+        }
+
+        viewModel.playlists.observe(this) { updated ->
+            playlists = updated
         }
 
         viewModel.currentQueueIndex.observe(this) { index ->
@@ -354,6 +369,7 @@ class MainActivity : AppCompatActivity() {
         PopupMenu(this, anchor).apply {
             menu.add(Menu.NONE, 2, Menu.NONE, "Play next")
             menu.add(Menu.NONE, 1, Menu.NONE, "Add to queue")
+            menu.add(Menu.NONE, 3, Menu.NONE, "Add to playlist")
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     1 -> {
@@ -364,11 +380,256 @@ class MainActivity : AppCompatActivity() {
                         viewModel.addSongToPlayNext(song)
                         true
                     }
+                    3 -> {
+                        showAddSongToPlaylistDialog(song)
+                        true
+                    }
                     else -> false
                 }
             }
             show()
         }
+    }
+
+    private fun showPlaylistBrowserDialog() {
+        if (playlists.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("Playlists")
+                .setMessage("No playlists yet.")
+                .setPositiveButton("Create") { _, _ ->
+                    showCreatePlaylistDialog()
+                }
+                .setNegativeButton("Close", null)
+                .show()
+            return
+        }
+
+        val items = playlists.map { playlist ->
+            "${playlist.name} (${playlist.songPaths.size})"
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Playlists")
+            .setItems(items) { _, index ->
+                val selected = playlists.getOrNull(index) ?: return@setItems
+                showPlaylistActionsDialog(selected)
+            }
+            .setPositiveButton("Create") { _, _ ->
+                showCreatePlaylistDialog()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showPlaylistActionsDialog(playlist: Playlist) {
+        val actions = arrayOf("View songs", "Add songs", "Rename", "Delete")
+        AlertDialog.Builder(this)
+            .setTitle(playlist.name)
+            .setItems(actions) { _, index ->
+                when (index) {
+                    0 -> showPlaylistSongsDialog(playlist.id)
+                    1 -> showAddSongsToPlaylistDialog(playlist.id)
+                    2 -> showRenamePlaylistDialog(playlist)
+                    3 -> showDeletePlaylistDialog(playlist)
+                }
+            }
+            .setNegativeButton("Back") { _, _ ->
+                showPlaylistBrowserDialog()
+            }
+            .show()
+    }
+
+    private fun showPlaylistSongsDialog(playlistId: Long) {
+        val playlist = playlists.find { it.id == playlistId } ?: return
+        val playlistSongs = viewModel.getPlaylistSongs(playlistId)
+        if (playlistSongs.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle(playlist.name)
+                .setMessage("This playlist has no songs.")
+                .setPositiveButton("Add songs") { _, _ ->
+                    showAddSongsToPlaylistDialog(playlistId)
+                }
+                .setNegativeButton("Back") { _, _ ->
+                    showPlaylistActionsDialog(playlist)
+                }
+                .show()
+            return
+        }
+
+        val items = playlistSongs.map { "${it.title} - ${it.artist}" }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(playlist.name)
+            .setItems(items) { _, index ->
+                val selectedSong = playlistSongs.getOrNull(index) ?: return@setItems
+                viewModel.playSongFromQueue(selectedSong, playlistSongs)
+            }
+            .setPositiveButton("Add songs") { _, _ ->
+                showAddSongsToPlaylistDialog(playlistId)
+            }
+            .setNeutralButton("Remove songs") { _, _ ->
+                showRemoveSongsFromPlaylistDialog(playlistId)
+            }
+            .setNegativeButton("Back") { _, _ ->
+                showPlaylistActionsDialog(playlist)
+            }
+            .show()
+    }
+
+    private fun showAddSongToPlaylistDialog(song: Song) {
+        if (playlists.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("Add to playlist")
+                .setMessage("No playlists yet.")
+                .setPositiveButton("Create") { _, _ ->
+                    showCreatePlaylistDialog(song)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+
+        val names = playlists.map { it.name }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Add to playlist")
+            .setItems(names) { _, index ->
+                val playlist = playlists.getOrNull(index) ?: return@setItems
+                val added = viewModel.addSongToPlaylist(playlist.id, song)
+                if (added) {
+                    showToast("Added to ${playlist.name}")
+                } else {
+                    showToast("Song is already in ${playlist.name}")
+                }
+            }
+            .setPositiveButton("Create new") { _, _ ->
+                showCreatePlaylistDialog(song)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showCreatePlaylistDialog(songToAdd: Song? = null) {
+        val input = EditText(this).apply {
+            hint = "Playlist name"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Create playlist")
+            .setView(input)
+            .setPositiveButton("Create") { _, _ ->
+                val name = input.text?.toString().orEmpty()
+                val createdPlaylist = viewModel.createPlaylist(name)
+                if (createdPlaylist == null) {
+                    showToast("Unable to create playlist")
+                    return@setPositiveButton
+                }
+                if (songToAdd != null) {
+                    viewModel.addSongToPlaylist(createdPlaylist.id, songToAdd)
+                    showToast("Playlist created and song added")
+                } else {
+                    showToast("Playlist created")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showRenamePlaylistDialog(playlist: Playlist) {
+        val input = EditText(this).apply {
+            setText(playlist.name)
+            setSelection(playlist.name.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Rename playlist")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val renamed = viewModel.renamePlaylist(playlist.id, input.text?.toString().orEmpty())
+                if (renamed) {
+                    showToast("Playlist renamed")
+                } else {
+                    showToast("Unable to rename playlist")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showDeletePlaylistDialog(playlist: Playlist) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete playlist")
+            .setMessage("Delete \"${playlist.name}\"?")
+            .setPositiveButton("Delete") { _, _ ->
+                val deleted = viewModel.deletePlaylist(playlist.id)
+                if (deleted) {
+                    showToast("Playlist deleted")
+                } else {
+                    showToast("Unable to delete playlist")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showAddSongsToPlaylistDialog(playlistId: Long) {
+        val playlist = playlists.find { it.id == playlistId } ?: return
+        if (allSongs.isEmpty()) {
+            showToast("No songs available")
+            return
+        }
+
+        val songItems = allSongs.map { "${it.title} - ${it.artist}" }.toTypedArray()
+        val checkedItems = BooleanArray(allSongs.size)
+
+        AlertDialog.Builder(this)
+            .setTitle("Add songs to ${playlist.name}")
+            .setMultiChoiceItems(songItems, checkedItems) { _, which, isChecked ->
+                checkedItems[which] = isChecked
+            }
+            .setPositiveButton("Add") { _, _ ->
+                val selectedSongs = allSongs.filterIndexed { index, _ -> checkedItems[index] }
+                val addedCount = viewModel.addSongsToPlaylist(playlistId, selectedSongs)
+                if (addedCount > 0) {
+                    showToast("Added $addedCount songs")
+                } else {
+                    showToast("No new songs added")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showRemoveSongsFromPlaylistDialog(playlistId: Long) {
+        val playlist = playlists.find { it.id == playlistId } ?: return
+        val playlistSongs = viewModel.getPlaylistSongs(playlistId)
+        if (playlistSongs.isEmpty()) {
+            showToast("Playlist is already empty")
+            return
+        }
+
+        val songItems = playlistSongs.map { "${it.title} - ${it.artist}" }.toTypedArray()
+        val checkedItems = BooleanArray(playlistSongs.size)
+
+        AlertDialog.Builder(this)
+            .setTitle("Remove songs from ${playlist.name}")
+            .setMultiChoiceItems(songItems, checkedItems) { _, which, isChecked ->
+                checkedItems[which] = isChecked
+            }
+            .setPositiveButton("Remove") { _, _ ->
+                val selectedPaths = playlistSongs
+                    .filterIndexed { index, _ -> checkedItems[index] }
+                    .map { it.path }
+                    .toSet()
+                val removedCount = viewModel.removeSongsFromPlaylist(playlistId, selectedPaths)
+                if (removedCount > 0) {
+                    showToast("Removed $removedCount songs")
+                } else {
+                    showToast("No songs removed")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun updateShuffleUi(isEnabled: Boolean) {

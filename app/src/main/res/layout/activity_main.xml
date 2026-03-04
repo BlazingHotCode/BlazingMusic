@@ -37,13 +37,26 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
+    <ImageButton
+            android:id="@+id/btnPlaylists"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="16dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Playlists"
+            android:src="@android:drawable/ic_menu_agenda"
+            app:layout_constraintTop_toBottomOf="@id/etSearch"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:tint="#CCCCCC"/>
+
     <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvSongs"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_marginTop="16dp"
             android:layout_marginBottom="150dp"
-            app:layout_constraintTop_toBottomOf="@id/etSearch"
+            app:layout_constraintTop_toBottomOf="@id/btnPlaylists"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>

@@ -10,6 +10,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -18,6 +20,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_QUEUE_IDS = "queue_ids"
         private const val KEY_QUEUE_PATHS = "queue_paths"
         private const val KEY_CURRENT_QUEUE_INDEX = "current_queue_index"
+        private const val KEY_PLAYLISTS_JSON = "playlists_json"
     }
 
     private val repository = MusicRepository(application)
@@ -56,9 +59,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentQueueIndex = MutableLiveData<Int>()
     val currentQueueIndex: LiveData<Int> = _currentQueueIndex
 
+    private val _playlists = MutableLiveData<List<Playlist>>()
+    val playlists: LiveData<List<Playlist>> = _playlists
+
     private var normalQueue: List<Song> = emptyList()
     private var activeQueue: List<Song> = emptyList()
     private var currentQueueIndexInternal = -1
+    private var playlistsInternal: List<Playlist> = emptyList()
 
     init {
         _isShuffleEnabled.value = false
@@ -66,6 +73,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _shouldRestartQueue.value = false
         _currentQueueIndex.value = -1
         _queue.value = emptyList()
+        loadPersistedPlaylists()
         initializePlayer()
     }
 
@@ -118,7 +126,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun playSong(song: Song) {
         // Song-list taps should always reset queue back to the full library.
         val fullLibrary = _songs.value ?: normalQueue
-        normalQueue = fullLibrary
+        playSongFromQueue(song, fullLibrary)
+    }
+
+    fun playSongFromQueue(song: Song, queueSource: List<Song>) {
+        val baseQueue = queueSource.distinctBy { it.path }
+        if (baseQueue.isEmpty()) return
+
+        normalQueue = baseQueue
         activeQueue = if (_isShuffleEnabled.value == true) {
             buildShuffledQueue(normalQueue)
         } else {
@@ -126,18 +141,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
         _queue.value = activeQueue
 
-        val index = activeQueue.indexOf(song)
-        if (index != -1) {
-            currentQueueIndexInternal = index
-            _currentQueueIndex.value = index
-        } else {
-            currentQueueIndexInternal = -1
-            _currentQueueIndex.value = -1
-        }
+        val index = activeQueue.indexOfFirst { it.path == song.path }
+        val resolvedIndex = if (index != -1) index else 0
+        val songToPlay = activeQueue[resolvedIndex]
+        currentQueueIndexInternal = resolvedIndex
+        _currentQueueIndex.value = resolvedIndex
         _shouldRestartQueue.value = false
-        _currentSong.value = song
+        _currentSong.value = songToPlay
         persistQueueState()
-        startPlayback(song)
+        startPlayback(songToPlay)
     }
 
     private fun startPlayback(song: Song) {
@@ -330,6 +342,89 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         applyQueueMutation(newQueue.toMutableList(), newCurrentIndex)
     }
 
+    fun createPlaylist(name: String): Playlist? {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return null
+        if (playlistsInternal.any { it.name.equals(trimmed, ignoreCase = true) }) return null
+
+        val newId = generatePlaylistId()
+        val createdPlaylist = Playlist(
+            id = newId,
+            name = trimmed,
+            songPaths = emptyList()
+        )
+        playlistsInternal = playlistsInternal + createdPlaylist
+        publishPlaylists()
+        return createdPlaylist
+    }
+
+    fun renamePlaylist(playlistId: Long, newName: String): Boolean {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return false
+        if (playlistsInternal.any { it.id != playlistId && it.name.equals(trimmed, ignoreCase = true) }) {
+            return false
+        }
+
+        val updated = playlistsInternal.map {
+            if (it.id == playlistId) it.copy(name = trimmed) else it
+        }
+        if (updated == playlistsInternal) return false
+
+        playlistsInternal = updated
+        publishPlaylists()
+        return true
+    }
+
+    fun deletePlaylist(playlistId: Long): Boolean {
+        val beforeSize = playlistsInternal.size
+        playlistsInternal = playlistsInternal.filterNot { it.id == playlistId }
+        if (playlistsInternal.size == beforeSize) return false
+        publishPlaylists()
+        return true
+    }
+
+    fun addSongToPlaylist(playlistId: Long, song: Song): Boolean {
+        return addSongsToPlaylist(playlistId, listOf(song)) > 0
+    }
+
+    fun addSongsToPlaylist(playlistId: Long, songs: List<Song>): Int {
+        if (songs.isEmpty()) return 0
+
+        val target = playlistsInternal.find { it.id == playlistId } ?: return 0
+        val existingPaths = target.songPaths.toMutableSet()
+        val pathsToAdd = songs.map { it.path }.filter { existingPaths.add(it) }
+        if (pathsToAdd.isEmpty()) return 0
+
+        val updatedPlaylist = target.copy(songPaths = target.songPaths + pathsToAdd)
+        playlistsInternal = playlistsInternal.map {
+            if (it.id == playlistId) updatedPlaylist else it
+        }
+        publishPlaylists()
+        return pathsToAdd.size
+    }
+
+    fun removeSongsFromPlaylist(playlistId: Long, songPaths: Set<String>): Int {
+        if (songPaths.isEmpty()) return 0
+        val target = playlistsInternal.find { it.id == playlistId } ?: return 0
+        val beforeSize = target.songPaths.size
+        val updatedPaths = target.songPaths.filterNot { it in songPaths }
+        if (beforeSize == updatedPaths.size) return 0
+
+        val updatedPlaylist = target.copy(songPaths = updatedPaths)
+        playlistsInternal = playlistsInternal.map {
+            if (it.id == playlistId) updatedPlaylist else it
+        }
+        publishPlaylists()
+        return beforeSize - updatedPaths.size
+    }
+
+    fun getPlaylistSongs(playlistId: Long): List<Song> {
+        val playlist = playlistsInternal.find { it.id == playlistId } ?: return emptyList()
+        if (playlist.songPaths.isEmpty()) return emptyList()
+        val songsByPath = (_songs.value ?: normalQueue).associateBy { it.path }
+        return playlist.songPaths.mapNotNull { songsByPath[it] }
+    }
+
     private fun buildShuffledQueue(queue: List<Song>): List<Song> {
         if (queue.isEmpty()) return queue
         return queue.shuffled()
@@ -375,6 +470,74 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             .putString(KEY_QUEUE_PATHS, activeQueue.joinToString("\n") { it.path })
             .putString(KEY_QUEUE_IDS, activeQueue.joinToString(",") { it.id.toString() }) // legacy fallback
             .putInt(KEY_CURRENT_QUEUE_INDEX, currentQueueIndexInternal)
+            .commit()
+    }
+
+    private fun publishPlaylists() {
+        _playlists.value = playlistsInternal
+        persistPlaylists()
+    }
+
+    private fun generatePlaylistId(): Long {
+        val existingIds = playlistsInternal.map { it.id }.toSet()
+        var candidate = System.currentTimeMillis()
+        while (candidate in existingIds) {
+            candidate += 1
+        }
+        return candidate
+    }
+
+    private fun loadPersistedPlaylists() {
+        val raw = prefs.getString(KEY_PLAYLISTS_JSON, null) ?: run {
+            playlistsInternal = emptyList()
+            _playlists.value = playlistsInternal
+            return
+        }
+
+        playlistsInternal = try {
+            val jsonArray = JSONArray(raw)
+            buildList {
+                for (index in 0 until jsonArray.length()) {
+                    val json = jsonArray.optJSONObject(index) ?: continue
+                    val id = json.optLong("id", -1L)
+                    val name = json.optString("name", "").trim()
+                    if (id <= 0L || name.isEmpty()) continue
+
+                    val songsArray = json.optJSONArray("song_paths") ?: JSONArray()
+                    val paths = buildList {
+                        for (songIndex in 0 until songsArray.length()) {
+                            val path = songsArray.optString(songIndex, "").trim()
+                            if (path.isNotEmpty()) add(path)
+                        }
+                    }.distinct()
+
+                    add(
+                        Playlist(
+                            id = id,
+                            name = name,
+                            songPaths = paths
+                        )
+                    )
+                }
+            }
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        _playlists.value = playlistsInternal
+    }
+
+    private fun persistPlaylists() {
+        val jsonArray = JSONArray()
+        playlistsInternal.forEach { playlist ->
+            val playlistJson = JSONObject()
+                .put("id", playlist.id)
+                .put("name", playlist.name)
+                .put("song_paths", JSONArray(playlist.songPaths))
+            jsonArray.put(playlistJson)
+        }
+
+        prefs.edit()
+            .putString(KEY_PLAYLISTS_JSON, jsonArray.toString())
             .commit()
     }
 

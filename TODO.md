@@ -14,7 +14,7 @@
 12. [x] Rework shuffle behavior: when enabled, randomize the full queue once and keep that fixed shuffled order while navigating next/previous; when disabled, restore the normal queue order.
 13. [x] Build queue controls: drag to reorder, swipe to remove, and "play next."
 14. [x] Persist queue + current index across app restarts.
-15. [ ] Add playlist creation and management (create, rename, delete playlists; add/remove songs).
+15. [x] Add playlist creation and management (create, rename, delete playlists; add/remove songs).
 16. [ ] Add sort options: title, artist, album, duration, recently added.
 17. [ ] Add a clear "currently playing" indicator in the main song list.
 18. [ ] Add "Up Next" section in mini-player (next 3 songs).
