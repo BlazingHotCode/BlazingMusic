@@ -2,9 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-03-05
+
+### Added in 1.1.0
+
+- Playlist tab and playlist-song screens integrated into main app navigation flow.
+- Playlist queue/session persistence improvements, including restored playback position on app relaunch.
+- Styled secondary action button drawable for playlist actions (`Play All` / `Shuffle`) consistency.
+
+### Changed
+
+- Updated app layout toward a Spotify/Metrolist-style structure with dedicated Home and Playlists tabs.
+- Reworked playlist management prompts (create/rename/delete) to use bottom-sheet style UI matching the app.
+- Unified 3-dot overflow menu behavior/styling across songs and playlists.
+- Improved header/title behavior and player control spacing for better small-screen rendering.
+- Shuffle behavior now only randomizes upcoming songs (tracks after the current queue index).
+- `Play All` and Home song tap now disable shuffle before starting playback.
+
+### Fixed
+
+- Fixed crashes when opening playlist and queue views.
+- Fixed relaunch playback issue where pressing Play could no-op until Next/Previous was pressed.
+- Fixed bottom-nav/tab indicator state sync when switching between Home and Playlists.
+- Fixed tab/back navigation animation inconsistencies.
+- Fixed Playlists header overlap where `Create` could render behind search.
+- Fixed deprecated back-press handling by migrating to `OnBackPressedDispatcher`.
+- Fixed crash when pressing `Create playlist` caused by dialog inflation/theme mismatch.
+
 ## [1.0.0] - 2026-03-02
 
 ### Added
+
 - Display songs from device storage
 - Play/pause music
 - Previous/Next track controls
