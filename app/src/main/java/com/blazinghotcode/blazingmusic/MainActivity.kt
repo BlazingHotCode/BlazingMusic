@@ -786,17 +786,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun openPlaylistsTab() {
-        if (playlistContainer.visibility == View.VISIBLE &&
-            supportFragmentManager.findFragmentById(R.id.playlistContainer) is PlaylistsFragment
-        ) {
-            return
+        val current = supportFragmentManager.findFragmentById(R.id.playlistContainer)
+        if (playlistContainer.visibility == View.VISIBLE && current is PlaylistsFragment) return
+
+        if (playlistContainer.visibility != View.VISIBLE) {
+            playlistContainer.translationX = playlistContainer.width.toFloat().takeIf { it > 0f } ?: 1200f
+            playlistContainer.visibility = View.VISIBLE
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.playlistContainer, PlaylistsFragment())
+                .commit()
+            playlistContainer.post {
+                playlistContainer.animate()
+                    .translationX(0f)
+                    .setDuration(220L)
+                    .start()
+            }
+        } else if (supportFragmentManager.backStackEntryCount > 0) {
+            // If user is on playlist detail, go back to playlist root with back stack animation.
+            supportFragmentManager.popBackStack()
+        } else {
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.playlistContainer, PlaylistsFragment())
+                .commit()
         }
-        playlistContainer.visibility = View.VISIBLE
-        supportFragmentManager.popBackStack(null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
-        supportFragmentManager.beginTransaction()
-            .setCustomAnimations(R.anim.slide_in_right, R.anim.slide_out_left)
-            .replace(R.id.playlistContainer, PlaylistsFragment())
-            .commit()
         updateBottomNavSelection(homeSelected = false)
     }
 
@@ -816,8 +828,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun openHomeTab() {
-        supportFragmentManager.popBackStack(null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
-        playlistContainer.visibility = View.GONE
+        if (playlistContainer.visibility != View.VISIBLE) {
+            updateBottomNavSelection(homeSelected = true)
+            return
+        }
+        supportFragmentManager.popBackStackImmediate(
+            null,
+            androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE
+        )
+        val targetX = playlistContainer.width.toFloat().takeIf { it > 0f } ?: 1200f
+        playlistContainer.animate()
+            .translationX(targetX)
+            .setDuration(220L)
+            .withEndAction {
+                playlistContainer.visibility = View.GONE
+                playlistContainer.translationX = 0f
+            }
+            .start()
         updateBottomNavSelection(homeSelected = true)
     }
 
@@ -825,6 +852,7 @@ class MainActivity : AppCompatActivity() {
         if (playlistContainer.visibility == View.VISIBLE) {
             if (supportFragmentManager.backStackEntryCount > 0) {
                 supportFragmentManager.popBackStack()
+                updateBottomNavSelection(homeSelected = false)
             } else {
                 openHomeTab()
             }
