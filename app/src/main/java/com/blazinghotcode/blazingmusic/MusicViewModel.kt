@@ -1,6 +1,7 @@
 package com.blazinghotcode.blazingmusic
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -12,8 +13,18 @@ import kotlinx.coroutines.launch
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        private const val PREFS_NAME = "blazing_music_prefs"
+        private const val KEY_QUEUE_IDS = "queue_ids"
+        private const val KEY_QUEUE_PATHS = "queue_paths"
+        private const val KEY_CURRENT_QUEUE_INDEX = "current_queue_index"
+    }
+
     private val repository = MusicRepository(application)
     private var exoPlayer: ExoPlayer? = null
+    private val prefs by lazy {
+        getApplication<Application>().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
     private val _songs = MutableLiveData<List<Song>>()
     val songs: LiveData<List<Song>> = _songs
@@ -82,33 +93,40 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             normalQueue = repository.getAllSongs()
             _songs.value = normalQueue
-            val current = _currentSong.value
-            activeQueue = if (_isShuffleEnabled.value == true) {
+            val restored = restorePersistedQueue(normalQueue)
+            activeQueue = restored.first ?: if (_isShuffleEnabled.value == true) {
                 buildShuffledQueue(normalQueue)
             } else {
                 normalQueue
             }
             _queue.value = activeQueue
-            currentQueueIndexInternal = current?.let { activeQueue.indexOf(it) } ?: -1
+            currentQueueIndexInternal = if (restored.second in activeQueue.indices) {
+                restored.second
+            } else {
+                -1
+            }
             _currentQueueIndex.value = currentQueueIndexInternal
+            _currentSong.value = if (currentQueueIndexInternal in activeQueue.indices) {
+                activeQueue[currentQueueIndexInternal]
+            } else {
+                null
+            }
+            persistQueueState()
         }
     }
 
     fun playSong(song: Song) {
-        var index = activeQueue.indexOf(song)
-        if (index == -1) {
-            // If user selects a song from the full library that is no longer in queue,
-            // rebuild queue from full songs and keep shuffle mode behavior.
-            val fullLibrary = _songs.value ?: normalQueue
-            normalQueue = fullLibrary
-            activeQueue = if (_isShuffleEnabled.value == true) {
-                buildShuffledQueue(normalQueue)
-            } else {
-                normalQueue
-            }
-            _queue.value = activeQueue
-            index = activeQueue.indexOf(song)
+        // Song-list taps should always reset queue back to the full library.
+        val fullLibrary = _songs.value ?: normalQueue
+        normalQueue = fullLibrary
+        activeQueue = if (_isShuffleEnabled.value == true) {
+            buildShuffledQueue(normalQueue)
+        } else {
+            normalQueue
         }
+        _queue.value = activeQueue
+
+        val index = activeQueue.indexOf(song)
         if (index != -1) {
             currentQueueIndexInternal = index
             _currentQueueIndex.value = index
@@ -118,6 +136,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
         _shouldRestartQueue.value = false
         _currentSong.value = song
+        persistQueueState()
         startPlayback(song)
     }
 
@@ -231,6 +250,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _shouldRestartQueue.value = false
         val selected = activeQueue[index]
         _currentSong.value = selected
+        persistQueueState()
         startPlayback(selected)
     }
 
@@ -339,6 +359,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             -1
         }
         _currentQueueIndex.value = currentQueueIndexInternal
+        persistQueueState()
 
         if (_isShuffleEnabled.value != true) {
             normalQueue = activeQueue
@@ -346,6 +367,48 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             val queueSongIds = activeQueue.map { it.id }.toSet()
             normalQueue = normalQueue.filter { it.id in queueSongIds }
         }
+    }
+
+    private fun persistQueueState() {
+        // Use song path for durable restore across potential MediaStore ID changes.
+        prefs.edit()
+            .putString(KEY_QUEUE_PATHS, activeQueue.joinToString("\n") { it.path })
+            .putString(KEY_QUEUE_IDS, activeQueue.joinToString(",") { it.id.toString() }) // legacy fallback
+            .putInt(KEY_CURRENT_QUEUE_INDEX, currentQueueIndexInternal)
+            .commit()
+    }
+
+    private fun restorePersistedQueue(allSongs: List<Song>): Pair<List<Song>?, Int> {
+        val savedIndex = prefs.getInt(KEY_CURRENT_QUEUE_INDEX, -1)
+
+        val savedPaths = prefs.getString(KEY_QUEUE_PATHS, null)
+        if (!savedPaths.isNullOrBlank()) {
+            val songByPath = allSongs.associateBy { it.path }
+            val restoredByPath = savedPaths
+                .split("\n")
+                .filter { it.isNotBlank() }
+                .mapNotNull { songByPath[it] }
+
+            if (restoredByPath.isEmpty() && allSongs.isNotEmpty()) {
+                return Pair(null, -1)
+            }
+            return Pair(restoredByPath, savedIndex)
+        }
+
+        // Backward compatibility with previously stored IDs.
+        val savedIdsCsv = prefs.getString(KEY_QUEUE_IDS, null) ?: return Pair(null, -1)
+        if (savedIdsCsv.isBlank()) return Pair(emptyList(), -1)
+
+        val songById = allSongs.associateBy { it.id }
+        val restoredById = savedIdsCsv
+            .split(",")
+            .mapNotNull { it.toLongOrNull() }
+            .mapNotNull { songById[it] }
+
+        if (restoredById.isEmpty() && allSongs.isNotEmpty()) {
+            return Pair(null, -1)
+        }
+        return Pair(restoredById, savedIndex)
     }
 
     fun getCurrentPosition(): Long {
