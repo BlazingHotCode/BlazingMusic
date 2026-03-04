@@ -12,11 +12,15 @@ import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.Menu
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.Button
+import android.widget.CheckBox
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -35,6 +39,7 @@ import coil.load
 import coil.transform.RoundedCornersTransformation
 import android.os.Handler
 import android.os.Looper
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 
@@ -65,7 +70,7 @@ class MainActivity : AppCompatActivity() {
     private var queueCurrentIndex: Int = -1
     private var isCurrentlyPlaying = false
     private var shouldRestartQueue = false
-    private var queueDialog: AlertDialog? = null
+    private var queueDialog: BottomSheetDialog? = null
     private var queueEditorAdapter: QueueEditorAdapter? = null
     private var isQueueDragInProgress = false
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -190,7 +195,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         playerLayout.setOnClickListener {
-            // Could open full player screen
+            showQueueDialog()
         }
     }
 
@@ -210,6 +215,7 @@ class MainActivity : AppCompatActivity() {
             song?.let {
                 playerLayout.visibility = View.VISIBLE
                 tvSongTitle.text = it.title
+                tvSongTitle.isSelected = true
                 tvArtist.text = it.artist
                 it.albumArtUri?.let { uri ->
                     ivAlbumArt.load(uri) {
@@ -277,10 +283,10 @@ class MainActivity : AppCompatActivity() {
         val queueRecycler = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             clipToPadding = false
-            setPadding(0, 8, 0, 8)
+            setPadding(0, dp(6), 0, dp(12))
         }
         val recyclerContainer = FrameLayout(this).apply {
-            val horizontalPadding = (12 * resources.displayMetrics.density).toInt()
+            val horizontalPadding = dp(16)
             setPadding(horizontalPadding, 0, horizontalPadding, 0)
             addView(
                 queueRecycler,
@@ -345,11 +351,42 @@ class MainActivity : AppCompatActivity() {
         itemTouchHelper.attachToRecyclerView(queueRecycler)
 
         queueDialog?.dismiss()
-        queueDialog = dialogBuilder()
-            .setTitle("Playback Queue")
-            .setView(recyclerContainer)
-            .setNegativeButton("Close", null)
-            .showStyledDialog()
+        val title = TextView(this).apply {
+            text = "Playback Queue"
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(20), dp(18), dp(20), dp(4))
+        }
+        val close = Button(this).apply {
+            text = "Close"
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_lavender))
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setOnClickListener { queueDialog?.dismiss() }
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(title, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(recyclerContainer, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(close, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.END
+                marginEnd = dp(12)
+                bottomMargin = dp(8)
+            })
+        }
+        queueDialog = BottomSheetDialog(this, R.style.ThemeOverlay_BlazingMusic_BottomSheet).apply {
+            setContentView(root)
+            show()
+        }
         queueDialog?.setOnDismissListener {
             queueEditorAdapter = null
             queueDialog = null
@@ -410,40 +447,32 @@ class MainActivity : AppCompatActivity() {
                 .showStyledDialog()
             return
         }
-
-        val items = playlists.map { playlist ->
-            "${playlist.name} (${playlist.songPaths.size})"
-        }.toTypedArray()
-
-        dialogBuilder()
-            .setTitle("Playlists")
-            .setItems(items) { _, index ->
-                val selected = playlists.getOrNull(index) ?: return@setItems
-                showPlaylistActionsDialog(selected)
-            }
-            .setPositiveButton("Create") { _, _ ->
-                showCreatePlaylistDialog()
-            }
-            .setNegativeButton("Close", null)
-            .showStyledDialog()
+        showSimpleBottomSheet(
+            title = "Playlists",
+            items = playlists.map { "${it.name} (${it.songPaths.size})" },
+            primaryLabel = "Create",
+            onPrimaryClick = { showCreatePlaylistDialog() }
+        ) { index ->
+            val selected = playlists.getOrNull(index) ?: return@showSimpleBottomSheet
+            showPlaylistActionsDialog(selected)
+        }
     }
 
     private fun showPlaylistActionsDialog(playlist: Playlist) {
         val actions = arrayOf("View songs", "Add songs", "Rename", "Delete")
-        dialogBuilder()
-            .setTitle(playlist.name)
-            .setItems(actions) { _, index ->
-                when (index) {
-                    0 -> showPlaylistSongsDialog(playlist.id)
-                    1 -> showAddSongsToPlaylistDialog(playlist.id)
-                    2 -> showRenamePlaylistDialog(playlist)
-                    3 -> showDeletePlaylistDialog(playlist)
-                }
+        showSimpleBottomSheet(
+            title = playlist.name,
+            items = actions.toList(),
+            secondaryLabel = "Back",
+            onSecondaryClick = { showPlaylistBrowserDialog() }
+        ) { index ->
+            when (index) {
+                0 -> showPlaylistSongsDialog(playlist.id)
+                1 -> showAddSongsToPlaylistDialog(playlist.id)
+                2 -> showRenamePlaylistDialog(playlist)
+                3 -> showDeletePlaylistDialog(playlist)
             }
-            .setNegativeButton("Back") { _, _ ->
-                showPlaylistBrowserDialog()
-            }
-            .showStyledDialog()
+        }
     }
 
     private fun showPlaylistSongsDialog(playlistId: Long) {
@@ -463,23 +492,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val items = playlistSongs.map { "${it.title} - ${it.artist}" }.toTypedArray()
-        dialogBuilder()
-            .setTitle(playlist.name)
-            .setItems(items) { _, index ->
-                val selectedSong = playlistSongs.getOrNull(index) ?: return@setItems
-                viewModel.playSongFromQueue(selectedSong, playlistSongs)
-            }
-            .setPositiveButton("Add songs") { _, _ ->
-                showAddSongsToPlaylistDialog(playlistId)
-            }
-            .setNeutralButton("Remove songs") { _, _ ->
-                showRemoveSongsFromPlaylistDialog(playlistId)
-            }
-            .setNegativeButton("Back") { _, _ ->
-                showPlaylistActionsDialog(playlist)
-            }
-            .showStyledDialog()
+        showSimpleBottomSheet(
+            title = playlist.name,
+            items = playlistSongs.map { "${it.title} - ${it.artist}" },
+            primaryLabel = "Add songs",
+            secondaryLabel = "Remove songs",
+            onPrimaryClick = { showAddSongsToPlaylistDialog(playlistId) },
+            onSecondaryClick = { showRemoveSongsFromPlaylistDialog(playlistId) }
+        ) { index ->
+            val selectedSong = playlistSongs.getOrNull(index) ?: return@showSimpleBottomSheet
+            viewModel.playSongFromQueue(selectedSong, playlistSongs)
+        }
     }
 
     private fun showAddSongToPlaylistDialog(song: Song) {
@@ -495,86 +518,71 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val names = playlists.map { it.name }.toTypedArray()
-        dialogBuilder()
-            .setTitle("Add to playlist")
-            .setItems(names) { _, index ->
-                val playlist = playlists.getOrNull(index) ?: return@setItems
-                val added = viewModel.addSongToPlaylist(playlist.id, song)
-                if (added) {
-                    showToast("Added to ${playlist.name}")
-                } else {
-                    showToast("Song is already in ${playlist.name}")
-                }
+        showSimpleBottomSheet(
+            title = "Add to playlist",
+            items = playlists.map { it.name },
+            primaryLabel = "Create new",
+            onPrimaryClick = { showCreatePlaylistDialog(song) }
+        ) { index ->
+            val playlist = playlists.getOrNull(index) ?: return@showSimpleBottomSheet
+            val added = viewModel.addSongToPlaylist(playlist.id, song)
+            if (added) {
+                showToast("Added to ${playlist.name}")
+            } else {
+                showToast("Song is already in ${playlist.name}")
             }
-            .setPositiveButton("Create new") { _, _ ->
-                showCreatePlaylistDialog(song)
-            }
-            .setNegativeButton("Cancel", null)
-            .showStyledDialog()
+        }
     }
 
     private fun showCreatePlaylistDialog(songToAdd: Song? = null) {
-        val input = EditText(this).apply {
-            hint = "Playlist name"
-            applyDialogInputStyle()
-        }
-        dialogBuilder()
-            .setTitle("Create playlist")
-            .setView(input)
-            .setPositiveButton("Create") { _, _ ->
-                val name = input.text?.toString().orEmpty()
-                val createdPlaylist = viewModel.createPlaylist(name)
-                if (createdPlaylist == null) {
-                    showToast("Unable to create playlist")
-                    return@setPositiveButton
-                }
-                if (songToAdd != null) {
-                    viewModel.addSongToPlaylist(createdPlaylist.id, songToAdd)
-                    showToast("Playlist created and song added")
-                } else {
-                    showToast("Playlist created")
-                }
+        showTextInputBottomSheet(
+            title = "Create playlist",
+            hint = "Playlist name",
+            confirmLabel = "Create"
+        ) { name ->
+            val createdPlaylist = viewModel.createPlaylist(name)
+            if (createdPlaylist == null) {
+                showToast("Unable to create playlist")
+                return@showTextInputBottomSheet
             }
-            .setNegativeButton("Cancel", null)
-            .showStyledDialog()
+            if (songToAdd != null) {
+                viewModel.addSongToPlaylist(createdPlaylist.id, songToAdd)
+                showToast("Playlist created and song added")
+            } else {
+                showToast("Playlist created")
+            }
+        }
     }
 
     private fun showRenamePlaylistDialog(playlist: Playlist) {
-        val input = EditText(this).apply {
-            setText(playlist.name)
-            setSelection(playlist.name.length)
-            applyDialogInputStyle()
-        }
-        dialogBuilder()
-            .setTitle("Rename playlist")
-            .setView(input)
-            .setPositiveButton("Save") { _, _ ->
-                val renamed = viewModel.renamePlaylist(playlist.id, input.text?.toString().orEmpty())
-                if (renamed) {
-                    showToast("Playlist renamed")
-                } else {
-                    showToast("Unable to rename playlist")
-                }
+        showTextInputBottomSheet(
+            title = "Rename playlist",
+            hint = "Playlist name",
+            initialText = playlist.name,
+            confirmLabel = "Save"
+        ) { updatedName ->
+            val renamed = viewModel.renamePlaylist(playlist.id, updatedName)
+            if (renamed) {
+                showToast("Playlist renamed")
+            } else {
+                showToast("Unable to rename playlist")
             }
-            .setNegativeButton("Cancel", null)
-            .showStyledDialog()
+        }
     }
 
     private fun showDeletePlaylistDialog(playlist: Playlist) {
-        dialogBuilder()
-            .setTitle("Delete playlist")
-            .setMessage("Delete \"${playlist.name}\"?")
-            .setPositiveButton("Delete") { _, _ ->
-                val deleted = viewModel.deletePlaylist(playlist.id)
-                if (deleted) {
-                    showToast("Playlist deleted")
-                } else {
-                    showToast("Unable to delete playlist")
-                }
+        showConfirmBottomSheet(
+            title = "Delete playlist",
+            message = "Delete \"${playlist.name}\"?",
+            confirmLabel = "Delete"
+        ) {
+            val deleted = viewModel.deletePlaylist(playlist.id)
+            if (deleted) {
+                showToast("Playlist deleted")
+            } else {
+                showToast("Unable to delete playlist")
             }
-            .setNegativeButton("Cancel", null)
-            .showStyledDialog()
+        }
     }
 
     private fun showAddSongsToPlaylistDialog(playlistId: Long) {
@@ -584,25 +592,19 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val songItems = allSongs.map { "${it.title} - ${it.artist}" }.toTypedArray()
-        val checkedItems = BooleanArray(allSongs.size)
-
-        dialogBuilder()
-            .setTitle("Add songs to ${playlist.name}")
-            .setMultiChoiceItems(songItems, checkedItems) { _, which, isChecked ->
-                checkedItems[which] = isChecked
+        showMultiSelectBottomSheet(
+            title = "Add songs to ${playlist.name}",
+            items = allSongs.map { "${it.title} - ${it.artist}" },
+            confirmLabel = "Add"
+        ) { selectedIndices ->
+            val selectedSongs = allSongs.filterIndexed { index, _ -> selectedIndices.contains(index) }
+            val addedCount = viewModel.addSongsToPlaylist(playlistId, selectedSongs)
+            if (addedCount > 0) {
+                showToast("Added $addedCount songs")
+            } else {
+                showToast("No new songs added")
             }
-            .setPositiveButton("Add") { _, _ ->
-                val selectedSongs = allSongs.filterIndexed { index, _ -> checkedItems[index] }
-                val addedCount = viewModel.addSongsToPlaylist(playlistId, selectedSongs)
-                if (addedCount > 0) {
-                    showToast("Added $addedCount songs")
-                } else {
-                    showToast("No new songs added")
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .showStyledDialog()
+        }
     }
 
     private fun showRemoveSongsFromPlaylistDialog(playlistId: Long) {
@@ -613,28 +615,22 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val songItems = playlistSongs.map { "${it.title} - ${it.artist}" }.toTypedArray()
-        val checkedItems = BooleanArray(playlistSongs.size)
-
-        dialogBuilder()
-            .setTitle("Remove songs from ${playlist.name}")
-            .setMultiChoiceItems(songItems, checkedItems) { _, which, isChecked ->
-                checkedItems[which] = isChecked
+        showMultiSelectBottomSheet(
+            title = "Remove songs from ${playlist.name}",
+            items = playlistSongs.map { "${it.title} - ${it.artist}" },
+            confirmLabel = "Remove"
+        ) { selectedIndices ->
+            val selectedPaths = playlistSongs
+                .filterIndexed { index, _ -> selectedIndices.contains(index) }
+                .map { it.path }
+                .toSet()
+            val removedCount = viewModel.removeSongsFromPlaylist(playlistId, selectedPaths)
+            if (removedCount > 0) {
+                showToast("Removed $removedCount songs")
+            } else {
+                showToast("No songs removed")
             }
-            .setPositiveButton("Remove") { _, _ ->
-                val selectedPaths = playlistSongs
-                    .filterIndexed { index, _ -> checkedItems[index] }
-                    .map { it.path }
-                    .toSet()
-                val removedCount = viewModel.removeSongsFromPlaylist(playlistId, selectedPaths)
-                if (removedCount > 0) {
-                    showToast("Removed $removedCount songs")
-                } else {
-                    showToast("No songs removed")
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .showStyledDialog()
+        }
     }
 
     private fun showToast(message: String) {
@@ -771,6 +767,254 @@ class MainActivity : AppCompatActivity() {
         return AlertDialog.Builder(this)
     }
 
+    private fun showSimpleBottomSheet(
+        title: String,
+        items: List<String>,
+        primaryLabel: String? = null,
+        secondaryLabel: String? = null,
+        onPrimaryClick: (() -> Unit)? = null,
+        onSecondaryClick: (() -> Unit)? = null,
+        onItemClick: (Int) -> Unit
+    ): BottomSheetDialog {
+        val sheet = BottomSheetDialog(this, R.style.ThemeOverlay_BlazingMusic_BottomSheet)
+        val list = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = SimpleTextAdapter(items) { index ->
+                sheet.dismiss()
+                onItemClick(index)
+            }
+            clipToPadding = false
+            setPadding(dp(16), dp(4), dp(16), dp(10))
+        }
+        val titleView = TextView(this).apply {
+            text = title
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(20), dp(18), dp(20), dp(4))
+        }
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            val close = Button(this@MainActivity).apply {
+                text = "Close"
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setOnClickListener { sheet.dismiss() }
+            }
+            addView(close)
+            if (!primaryLabel.isNullOrBlank()) {
+                val create = Button(this@MainActivity).apply {
+                    id = android.R.id.button1
+                    text = primaryLabel
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_lavender))
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    setOnClickListener {
+                        sheet.dismiss()
+                        onPrimaryClick?.invoke()
+                    }
+                }
+                addView(create)
+            }
+            if (!secondaryLabel.isNullOrBlank()) {
+                val secondary = Button(this@MainActivity).apply {
+                    text = secondaryLabel
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    setOnClickListener {
+                        sheet.dismiss()
+                        onSecondaryClick?.invoke()
+                    }
+                }
+                addView(secondary)
+            }
+            setPadding(0, 0, dp(12), dp(10))
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(titleView)
+            addView(list, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(controls)
+        }
+        sheet.setContentView(root)
+        sheet.show()
+        return sheet
+    }
+
+    private fun showMultiSelectBottomSheet(
+        title: String,
+        items: List<String>,
+        confirmLabel: String,
+        onConfirm: (Set<Int>) -> Unit
+    ) {
+        val sheet = BottomSheetDialog(this, R.style.ThemeOverlay_BlazingMusic_BottomSheet)
+        val adapter = MultiSelectAdapter(items)
+        val list = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            this.adapter = adapter
+            clipToPadding = false
+            setPadding(dp(16), dp(4), dp(16), dp(10))
+        }
+        val titleView = TextView(this).apply {
+            text = title
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(20), dp(18), dp(20), dp(4))
+        }
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            val cancel = Button(this@MainActivity).apply {
+                text = "Cancel"
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setOnClickListener { sheet.dismiss() }
+            }
+            val confirm = Button(this@MainActivity).apply {
+                text = confirmLabel
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_lavender))
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setOnClickListener {
+                    sheet.dismiss()
+                    onConfirm(adapter.selectedPositions())
+                }
+            }
+            addView(cancel)
+            addView(confirm)
+            setPadding(0, 0, dp(12), dp(10))
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(titleView)
+            addView(list, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(controls)
+        }
+        sheet.setContentView(root)
+        sheet.show()
+    }
+
+    private fun showTextInputBottomSheet(
+        title: String,
+        hint: String,
+        initialText: String = "",
+        confirmLabel: String,
+        onConfirm: (String) -> Unit
+    ) {
+        val sheet = BottomSheetDialog(this, R.style.ThemeOverlay_BlazingMusic_BottomSheet)
+        val titleView = TextView(this).apply {
+            text = title
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(20), dp(18), dp(20), dp(6))
+        }
+        val input = EditText(this).apply {
+            this.hint = hint
+            setText(initialText)
+            if (initialText.isNotEmpty()) {
+                setSelection(initialText.length)
+            }
+            applyDialogInputStyle()
+        }
+        val inputContainer = FrameLayout(this).apply {
+            setPadding(dp(16), dp(0), dp(16), dp(10))
+            addView(input, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+        }
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            val cancel = Button(this@MainActivity).apply {
+                text = "Cancel"
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setOnClickListener { sheet.dismiss() }
+            }
+            val confirm = Button(this@MainActivity).apply {
+                text = confirmLabel
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_lavender))
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setOnClickListener {
+                    val value = input.text?.toString().orEmpty()
+                    sheet.dismiss()
+                    onConfirm(value)
+                }
+            }
+            addView(cancel)
+            addView(confirm)
+            setPadding(0, 0, dp(12), dp(10))
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(titleView)
+            addView(inputContainer)
+            addView(controls)
+        }
+        sheet.setContentView(root)
+        sheet.show()
+    }
+
+    private fun showConfirmBottomSheet(
+        title: String,
+        message: String,
+        confirmLabel: String,
+        onConfirm: () -> Unit
+    ) {
+        val sheet = BottomSheetDialog(this, R.style.ThemeOverlay_BlazingMusic_BottomSheet)
+        val titleView = TextView(this).apply {
+            text = title
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(20), dp(18), dp(20), dp(6))
+        }
+        val messageView = TextView(this).apply {
+            text = message
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setPadding(dp(20), dp(0), dp(20), dp(10))
+        }
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            val cancel = Button(this@MainActivity).apply {
+                text = "Cancel"
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setOnClickListener { sheet.dismiss() }
+            }
+            val confirm = Button(this@MainActivity).apply {
+                text = confirmLabel
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_lavender))
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setOnClickListener {
+                    sheet.dismiss()
+                    onConfirm()
+                }
+            }
+            addView(cancel)
+            addView(confirm)
+            setPadding(0, 0, dp(12), dp(10))
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(titleView)
+            addView(messageView)
+            addView(controls)
+        }
+        sheet.setContentView(root)
+        sheet.show()
+    }
+
     private fun AlertDialog.Builder.showStyledDialog(): AlertDialog {
         val dialog = show()
         runCatching {
@@ -784,5 +1028,109 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return dialog
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private class SimpleTextAdapter(
+        private val items: List<String>,
+        private val onClick: (Int) -> Unit
+    ) : RecyclerView.Adapter<SimpleTextAdapter.SimpleTextViewHolder>() {
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SimpleTextViewHolder {
+            val context = parent.context
+            val density = context.resources.displayMetrics.density
+            val horizontal = (14 * density).toInt()
+            val vertical = (12 * density).toInt()
+            val text = TextView(context).apply {
+                layoutParams = RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                setPadding(horizontal, vertical, horizontal, vertical)
+                background = ContextCompat.getDrawable(context, R.drawable.bg_queue_item)
+            }
+            return SimpleTextViewHolder(text)
+        }
+
+        override fun onBindViewHolder(holder: SimpleTextViewHolder, position: Int) {
+            val textView = holder.itemView as TextView
+            textView.text = items[position]
+            val params = textView.layoutParams as RecyclerView.LayoutParams
+            params.bottomMargin = (6 * textView.resources.displayMetrics.density).toInt()
+            textView.layoutParams = params
+            textView.setOnClickListener { onClick(position) }
+        }
+
+        override fun getItemCount(): Int = items.size
+
+        class SimpleTextViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
+    }
+
+    private class MultiSelectAdapter(
+        private val items: List<String>
+    ) : RecyclerView.Adapter<MultiSelectAdapter.MultiSelectViewHolder>() {
+
+        private val selected = mutableSetOf<Int>()
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MultiSelectViewHolder {
+            val context = parent.context
+            val density = context.resources.displayMetrics.density
+            val horizontal = (14 * density).toInt()
+            val vertical = (10 * density).toInt()
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(horizontal, vertical, horizontal, vertical)
+                background = ContextCompat.getDrawable(context, R.drawable.bg_queue_item)
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val checkBox = CheckBox(context)
+            val label = TextView(context).apply {
+                setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setPadding((6 * density).toInt(), 0, 0, 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            }
+            row.addView(checkBox)
+            row.addView(label)
+            return MultiSelectViewHolder(row, checkBox, label)
+        }
+
+        override fun onBindViewHolder(holder: MultiSelectViewHolder, position: Int) {
+            holder.label.text = items[position]
+            holder.checkBox.setOnCheckedChangeListener(null)
+            holder.checkBox.isChecked = selected.contains(position)
+            holder.itemView.setOnClickListener {
+                val newChecked = !holder.checkBox.isChecked
+                holder.checkBox.isChecked = newChecked
+                if (newChecked) selected.add(position) else selected.remove(position)
+            }
+            holder.checkBox.setOnCheckedChangeListener { _, checked ->
+                if (checked) selected.add(position) else selected.remove(position)
+            }
+            val params = holder.itemView.layoutParams as RecyclerView.LayoutParams
+            params.bottomMargin = (6 * holder.itemView.resources.displayMetrics.density).toInt()
+            holder.itemView.layoutParams = params
+        }
+
+        override fun getItemCount(): Int = items.size
+
+        fun selectedPositions(): Set<Int> = selected.toSet()
+
+        class MultiSelectViewHolder(
+            itemView: View,
+            val checkBox: CheckBox,
+            val label: TextView
+        ) : RecyclerView.ViewHolder(itemView)
     }
 }

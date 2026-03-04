@@ -41,6 +41,14 @@
         <item name="popupMenuStyle">@style/Widget.BlazingMusic.PopupMenu</item>
     </style>
 
+    <style name="ThemeOverlay.BlazingMusic.BottomSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.BlazingMusic.BottomSheet</item>
+    </style>
+
+    <style name="Widget.BlazingMusic.BottomSheet" parent="Widget.Material3.BottomSheet">
+        <item name="android:background">@drawable/bg_bottom_sheet_surface</item>
+    </style>
+
     <style name="Widget.BlazingMusic.PopupMenu" parent="Widget.AppCompat.PopupMenu">
         <item name="android:popupBackground">@drawable/bg_popup_menu</item>
         <item name="android:itemTextAppearance">@style/TextAppearance.BlazingMusic.PopupMenuItem</item>
