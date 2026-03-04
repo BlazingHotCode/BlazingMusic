@@ -231,13 +231,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
         val current = _currentSong.value
         activeQueue = if (isEnabled) {
-            buildShuffledQueue(normalQueue)
+            buildShuffledUpcomingQueue(activeQueue, currentQueueIndexInternal)
         } else {
             normalQueue
         }
         _queue.value = activeQueue
         currentQueueIndexInternal = current?.let { activeQueue.indexOf(it) } ?: -1
         _currentQueueIndex.value = currentQueueIndexInternal
+        persistQueueState()
     }
 
     fun toggleRepeat() {
@@ -444,6 +445,16 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun buildShuffledQueue(queue: List<Song>): List<Song> {
         if (queue.isEmpty()) return queue
         return queue.shuffled()
+    }
+
+    private fun buildShuffledUpcomingQueue(queue: List<Song>, currentIndex: Int): List<Song> {
+        if (queue.isEmpty()) return queue
+        if (currentIndex !in queue.indices) return queue.shuffled()
+
+        val playedAndCurrent = queue.subList(0, currentIndex + 1)
+        val upcoming = queue.subList(currentIndex + 1, queue.size)
+        if (upcoming.size <= 1) return queue
+        return playedAndCurrent + upcoming.shuffled()
     }
 
     private fun handleTrackEnded() {

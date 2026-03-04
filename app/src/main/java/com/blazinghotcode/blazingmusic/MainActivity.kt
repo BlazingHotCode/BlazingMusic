@@ -155,6 +155,9 @@ class MainActivity : AppCompatActivity() {
     private fun setupRecyclerView() {
         songAdapter = SongAdapter(
             onSongClick = { song ->
+                if (viewModel.isShuffleEnabled.value == true) {
+                    viewModel.toggleShuffle()
+                }
                 viewModel.playSong(song)
             },
             onSongMenuClick = { song, anchor ->

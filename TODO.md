@@ -18,8 +18,8 @@
 16. [ ] Add sort options: title, artist, album, duration, recently added.
 17. [ ] Add a clear "currently playing" indicator in the main song list.
 18. [ ] Add "Up Next" section in mini-player (next 3 songs).
-19. [ ] Add media notification actions: previous, play/pause, next, seek.
-20. [ ] Add lock-screen metadata/controls (MediaSession metadata updates).
+19. [ ] Add media notification player controls via `MediaStyle` notification actions: previous, play/pause, next, seek.
+20. [ ] Add lock-screen player metadata/controls driven by `MediaSession` metadata and playback state updates.
 21. [ ] Request and handle POST_NOTIFICATIONS permission on Android 13+.
 22. [ ] Debounce search input for smoother filtering on large libraries.
 23. [ ] Add fast-scrolling and alphabetical indexing in song list.

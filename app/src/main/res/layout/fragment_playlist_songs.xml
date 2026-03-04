@@ -73,28 +73,36 @@
     <Button
         android:id="@+id/btnPlayAll"
         android:layout_width="wrap_content"
-        android:layout_height="36dp"
+        android:layout_height="40dp"
+        android:minWidth="96dp"
         android:layout_marginStart="20dp"
         android:layout_marginTop="8dp"
         android:background="@drawable/bg_primary_icon_button"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
         android:text="Play All"
         android:textAllCaps="false"
         android:textColor="@color/bg_primary"
-        android:textSize="12sp"
+        android:textSize="13sp"
+        android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/etSearchSongs" />
 
     <Button
         android:id="@+id/btnShuffleList"
         android:layout_width="wrap_content"
-        android:layout_height="36dp"
+        android:layout_height="40dp"
+        android:minWidth="96dp"
         android:layout_marginStart="8dp"
         android:layout_marginTop="8dp"
-        android:background="@drawable/bg_icon_button"
+        android:background="@drawable/bg_secondary_action_button"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
         android:text="Shuffle"
         android:textAllCaps="false"
         android:textColor="@color/text_primary"
-        android:textSize="12sp"
+        android:textSize="13sp"
+        android:textStyle="bold"
         app:layout_constraintStart_toEndOf="@id/btnPlayAll"
         app:layout_constraintTop_toBottomOf="@id/etSearchSongs" />
 
@@ -240,8 +248,8 @@
 
         <ImageButton
             android:id="@+id/btnPlayPause"
-            android:layout_width="68dp"
-            android:layout_height="68dp"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
             android:layout_marginStart="10dp"
             android:layout_marginEnd="10dp"
             android:background="@drawable/bg_primary_icon_button"
@@ -271,13 +279,13 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="8dp"
             android:layout_marginEnd="14dp"
             android:progressTint="@color/accent_lavender"
             android:thumbTint="@color/accent_lavender"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/btnPrevious" />
+            app:layout_constraintTop_toBottomOf="@id/btnPlayPause" />
 
         <TextView
             android:id="@+id/tvCurrentTime"

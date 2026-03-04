@@ -247,6 +247,9 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         btnPlayAll.setOnClickListener {
             val source = if (filteredSongs.isNotEmpty()) filteredSongs else playlistSongs
             source.firstOrNull()?.let { first ->
+                if (viewModel.isShuffleEnabled.value == true) {
+                    viewModel.toggleShuffle()
+                }
                 viewModel.playSongFromQueue(first, source)
             } ?: showToast("No songs in playlist")
         }
