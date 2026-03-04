@@ -2,6 +2,7 @@ package com.blazinghotcode.blazingmusic
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -20,7 +21,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_QUEUE_IDS = "queue_ids"
         private const val KEY_QUEUE_PATHS = "queue_paths"
         private const val KEY_CURRENT_QUEUE_INDEX = "current_queue_index"
+        private const val KEY_CURRENT_POSITION_MS = "current_position_ms"
         private const val KEY_PLAYLISTS_JSON = "playlists_json"
+        private const val TAG = "MusicViewModel"
     }
 
     private val repository = MusicRepository(application)
@@ -119,7 +122,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 null
             }
-            persistQueueState()
+            if (currentQueueIndexInternal in activeQueue.indices) {
+                val restoredSong = activeQueue[currentQueueIndexInternal]
+                val restoredPositionMs = readPersistedPositionMs()
+                _shouldRestartQueue.value = false
+                prepareRestoredSong(restoredSong, restoredPositionMs)
+                persistQueueState(positionOverrideMs = restoredPositionMs)
+            } else {
+                persistQueueState(positionOverrideMs = 0L)
+            }
         }
     }
 
@@ -148,7 +159,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _currentQueueIndex.value = resolvedIndex
         _shouldRestartQueue.value = false
         _currentSong.value = songToPlay
-        persistQueueState()
+        persistQueueState(positionOverrideMs = 0L)
         startPlayback(songToPlay)
     }
 
@@ -168,6 +179,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 player.play()
             }
+            persistPlaybackPosition()
         }
     }
 
@@ -236,7 +248,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun seekTo(position: Long) {
-        exoPlayer?.seekTo(position)
+        val clamped = position.coerceAtLeast(0L)
+        exoPlayer?.seekTo(clamped)
+        persistQueueState(positionOverrideMs = clamped)
     }
 
     fun addSongToQueue(song: Song) {
@@ -263,7 +277,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _shouldRestartQueue.value = false
         val selected = activeQueue[index]
         _currentSong.value = selected
-        persistQueueState()
+        persistQueueState(positionOverrideMs = 0L)
         startPlayback(selected)
     }
 
@@ -310,6 +324,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 _isPlaying.value = false
                 currentQueueIndexInternal = -1
                 _currentQueueIndex.value = -1
+                persistQueueState(positionOverrideMs = 0L)
             } else {
                 val fallbackIndex = index.coerceAtMost(activeQueue.lastIndex)
                 playSongAt(fallbackIndex)
@@ -465,13 +480,35 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun persistQueueState() {
+    private fun persistQueueState(positionOverrideMs: Long? = null) {
+        val positionMs = (positionOverrideMs ?: exoPlayer?.currentPosition ?: 0L).coerceAtLeast(0L)
         // Use song path for durable restore across potential MediaStore ID changes.
         prefs.edit()
             .putString(KEY_QUEUE_PATHS, activeQueue.joinToString("\n") { it.path })
             .putString(KEY_QUEUE_IDS, activeQueue.joinToString(",") { it.id.toString() }) // legacy fallback
             .putInt(KEY_CURRENT_QUEUE_INDEX, currentQueueIndexInternal)
+            .putLong(KEY_CURRENT_POSITION_MS, positionMs)
             .commit()
+    }
+
+    private fun readPersistedPositionMs(): Long {
+        return prefs.getLong(KEY_CURRENT_POSITION_MS, 0L).coerceAtLeast(0L)
+    }
+
+    private fun prepareRestoredSong(song: Song, positionMs: Long) {
+        exoPlayer?.let { player ->
+            try {
+                player.setMediaItem(MediaItem.fromUri(song.path))
+                player.prepare()
+                player.seekTo(positionMs.coerceAtLeast(0L))
+            } catch (error: Throwable) {
+                Log.w(TAG, "Failed to prepare restored song ${song.path}", error)
+            }
+        }
+    }
+
+    fun persistPlaybackPosition() {
+        persistQueueState()
     }
 
     private fun publishPlaylists() {

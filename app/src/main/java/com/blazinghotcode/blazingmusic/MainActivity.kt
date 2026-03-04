@@ -25,6 +25,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -59,7 +60,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnPrevious: ImageButton
     private lateinit var btnNext: ImageButton
-    private lateinit var btnPlaylists: ImageButton
     private lateinit var btnQueue: ImageButton
     private lateinit var btnShuffle: ImageButton
     private lateinit var btnRepeat: ImageButton
@@ -109,6 +109,7 @@ class MainActivity : AppCompatActivity() {
         setupPlayerControls()
         setupPlaylistControls()
         observeViewModel()
+        setupBackNavigation()
         checkPermissions()
     }
 
@@ -136,7 +137,6 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnPrevious = findViewById(R.id.btnPrevious)
         btnNext = findViewById(R.id.btnNext)
-        btnPlaylists = findViewById(R.id.btnPlaylists)
         btnQueue = findViewById(R.id.btnQueue)
         btnShuffle = findViewById(R.id.btnShuffle)
         btnRepeat = findViewById(R.id.btnRepeat)
@@ -212,9 +212,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupPlaylistControls() {
-        btnPlaylists.setOnClickListener {
-            openPlaylistsTab()
-        }
         navHome.setOnClickListener { openHomeTab() }
         navPlaylists.setOnClickListener { openPlaylistsTab() }
     }
@@ -769,6 +766,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(updateSeekbarRunnable)
+        viewModel.persistPlaybackPosition()
     }
 
     private fun formatDuration(durationMs: Long): String {
@@ -848,7 +846,18 @@ class MainActivity : AppCompatActivity() {
         updateBottomNavSelection(homeSelected = true)
     }
 
-    override fun onBackPressed() {
+    private fun setupBackNavigation() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (handleAppBackPress()) return
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        })
+    }
+
+    private fun handleAppBackPress(): Boolean {
         if (playlistContainer.visibility == View.VISIBLE) {
             if (supportFragmentManager.backStackEntryCount > 0) {
                 supportFragmentManager.popBackStack()
@@ -856,9 +865,9 @@ class MainActivity : AppCompatActivity() {
             } else {
                 openHomeTab()
             }
-            return
+            return true
         }
-        super.onBackPressed()
+        return false
     }
 
     private fun updateBottomNavSelection(homeSelected: Boolean) {
