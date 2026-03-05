@@ -510,8 +510,18 @@ class YouTubeApiClient(private val appContext: Context? = null) {
     }
 
     suspend fun resolveAudioStreamUrl(videoId: String): String? {
+        return resolveAudioStreamUrlInternal(videoId, allowCache = true)
+    }
+
+    suspend fun resolveAudioStreamUrlFresh(videoId: String): String? {
+        return resolveAudioStreamUrlInternal(videoId, allowCache = false)
+    }
+
+    private suspend fun resolveAudioStreamUrlInternal(videoId: String, allowCache: Boolean): String? {
         if (videoId.isBlank()) return null
-        getCachedStreamUrl(videoId)?.let { return it }
+        if (allowCache) {
+            getCachedStreamUrl(videoId)?.let { return it }
+        }
 
         // Metrolist-style primary path: extractor-based stream resolution first.
         val extractorCandidate = YouTubeStreamResolver.resolveBestAudioUrl(videoId)
@@ -564,7 +574,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             clientId = ANDROID_CLIENT_ID,
             userAgent = USER_AGENT_ANDROID
         )
-        if (!androidCandidate.isNullOrBlank()) {
+        if (!androidCandidate.isNullOrBlank() && looksLikeDirectPlayableAudioUrl(androidCandidate)) {
             cacheStreamUrl(videoId, androidCandidate)
             return androidCandidate
         }
@@ -577,12 +587,24 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             clientId = WEB_REMIX_CLIENT_ID,
             userAgent = USER_AGENT_WEB
         )
-        if (!webRemixCandidate.isNullOrBlank()) {
+        if (!webRemixCandidate.isNullOrBlank() && looksLikeDirectPlayableAudioUrl(webRemixCandidate)) {
             cacheStreamUrl(videoId, webRemixCandidate)
             return webRemixCandidate
         }
 
-        return null
+        return resolveAudioStreamUrlFresh(videoId)
+    }
+
+    fun invalidateCachedStreamUrl(videoId: String) {
+        if (videoId.isBlank()) return
+        synchronized(streamUrlCache) {
+            streamUrlCache.remove(videoId)
+        }
+        appContext
+            ?.getSharedPreferences(STREAM_CACHE_PREFS, Context.MODE_PRIVATE)
+            ?.edit()
+            ?.remove("stream_$videoId")
+            ?.apply()
     }
 
     private fun getCachedStreamUrl(videoId: String): String? {
@@ -680,8 +702,9 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             val params = parseUrlEncodedParams(cipher)
             val cipherUrl = params["url"].orEmpty().trim()
             if (cipherUrl.isNotEmpty()) {
-                // Some formats are already playable without deciphering `s`; use when available.
-                return cipherUrl
+                if (looksLikeDirectPlayableAudioUrl(cipherUrl)) {
+                    return cipherUrl
+                }
             }
         }
 
@@ -1284,6 +1307,15 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                 key to v
             }
             .toMap()
+    }
+
+    private fun looksLikeDirectPlayableAudioUrl(url: String): Boolean {
+        if (url.isBlank()) return false
+        val normalized = url.lowercase()
+        if (!normalized.contains("googlevideo.com")) return false
+        val hasAudioHint = normalized.contains("mime=audio") || normalized.contains("mime%3daudio")
+        val hasExpiryHint = normalized.contains("expire=") || normalized.contains("ei=")
+        return hasAudioHint && hasExpiryHint
     }
 
     private fun joinRunsText(runs: JSONArray): String {

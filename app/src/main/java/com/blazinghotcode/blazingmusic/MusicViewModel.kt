@@ -179,14 +179,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
         val current = _currentSong.value ?: return
         val videoId = current.sourceVideoId ?: return
-        if (!current.path.contains("googlevideo.com", ignoreCase = true)) return
         if (!retryingYouTubeVideoIds.add(videoId)) return
 
         val currentIndex = currentQueueIndexInternal
         val resumePositionMs = getCurrentPosition().coerceAtLeast(0L)
         viewModelScope.launch {
             try {
-                val refreshedUrl = runCatching { youTubeApiClient.resolveAudioStreamUrl(videoId) }.getOrNull()
+                youTubeApiClient.invalidateCachedStreamUrl(videoId)
+                val refreshedUrl = runCatching { youTubeApiClient.resolveAudioStreamUrlFresh(videoId) }.getOrNull()
                 if (refreshedUrl.isNullOrBlank()) return@launch
                 val playable = runCatching { youTubeApiClient.isStreamPlayable(refreshedUrl) }.getOrDefault(false)
                 if (!playable) return@launch
