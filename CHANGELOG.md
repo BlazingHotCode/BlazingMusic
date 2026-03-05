@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-03-05
+
+### Added
+
+- YouTube Music in-app browsing and playback flow, including dedicated browse pages, search filters, and songs-only ranking/toggle improvements.
+- Endpoint-aware Mix/Radio generation with continuation paging, plus radio/up-next actions integrated across YouTube flows.
+- New Search tab between Home and Library, playback defaults settings screen, and a protected local system playlist for device music.
+- Full-screen player entry from mini-player, custom media notification controls/branding, and Android 13+ notification permission handling.
+- UI and test infrastructure upgrades, including a dedicated `uitest` build type and expanded unit/UI test coverage.
+
+### Changed
+
+- Refined app styling and song list UX with fast-scroll thumb + alphabet index, marquee/full-title handling, and empty/error states.
+- Improved queue behavior with persistent sort/order preferences, playlist song ordering, multi-select actions, and stronger queue/session restoration.
+- Enhanced YouTube performance by parallelizing Mix/Radio resolution, caching streams, and progressively stitching radio queues.
+- Upgraded Android/Gradle toolchain and cleaned AGP warning flags.
+
+### Fixed
+
+- Improved playback reliability by refreshing stale streams, recovering queue/player sync after idle, and stabilizing transition handling.
+- Fixed UI polish issues such as title/duration overlap, list scroll resets on sort changes, and song artwork normalization.
+- Fixed Android/Media3 compatibility warnings by aligning annotation usage and opting `MusicService` into unstable APIs where required.
+
 ## [1.1.0] - 2026-03-05
 
 ### Added in 1.1.0
