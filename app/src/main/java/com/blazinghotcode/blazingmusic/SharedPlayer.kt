@@ -3,6 +3,7 @@ package com.blazinghotcode.blazingmusic
 import android.content.Context
 import androidx.media3.exoplayer.ExoPlayer
 
+/** Singleton holder for the shared ExoPlayer instance used by UI and service. */
 object SharedPlayer {
     @Volatile
     private var player: ExoPlayer? = null

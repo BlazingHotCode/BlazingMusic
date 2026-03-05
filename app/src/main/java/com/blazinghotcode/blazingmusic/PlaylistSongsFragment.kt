@@ -29,6 +29,7 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.transform.RoundedCornersTransformation
 
+/** Playlist detail screen for song browsing, sorting, bulk actions, and playback start. */
 class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
     companion object {

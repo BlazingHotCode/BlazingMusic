@@ -8,6 +8,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 
+/** Adapter for editable queue list (reorder, remove, jump to item). */
 class QueueEditorAdapter(
     private val onSongClick: (Int) -> Unit,
     private val onItemMenuClick: (Int, View) -> Unit

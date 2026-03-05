@@ -56,6 +56,10 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 
+/**
+ * Main app shell that hosts Home + Playlists sections, mini-player controls,
+ * queue bottom sheet, permission flow, and service/controller wiring.
+ */
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val SORT_PREFS_NAME = "blazing_music_sort_prefs"

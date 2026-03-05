@@ -10,6 +10,7 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.core.content.ContextCompat
 
+/** Vertical A-Z side index used for fast section jumps in song lists. */
 class AlphabetIndexView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null

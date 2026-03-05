@@ -7,6 +7,7 @@ import androidx.media3.session.MediaNotification
 import androidx.media3.session.MediaSession
 import com.google.common.collect.ImmutableList
 
+/** Media3 notification provider override for title/ticker presentation. */
 class BlazingMediaNotificationProvider(
     context: android.content.Context,
     notificationIdProvider: DefaultMediaNotificationProvider.NotificationIdProvider,

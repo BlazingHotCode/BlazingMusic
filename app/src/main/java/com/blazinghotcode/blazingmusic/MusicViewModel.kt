@@ -16,6 +16,10 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Central playback/state coordinator for songs, queue, player controls, and playlists.
+ * Owns persistence for queue/index/position and exposes UI-observable state via LiveData.
+ */
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
@@ -747,6 +751,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+/** UI-facing state for library loading and permission/error empty states. */
 sealed class LibraryLoadState {
     data object Loading : LibraryLoadState()
     data object Content : LibraryLoadState()

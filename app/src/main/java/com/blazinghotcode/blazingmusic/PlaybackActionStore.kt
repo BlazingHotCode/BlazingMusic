@@ -2,6 +2,7 @@ package com.blazinghotcode.blazingmusic
 
 import android.content.Context
 
+/** SharedPreferences-backed scratchpad for pending playback actions. */
 object PlaybackActionStore {
     private const val PREFS_NAME = "blazing_music_notification_actions"
     private const val KEY_ACTION = "action"

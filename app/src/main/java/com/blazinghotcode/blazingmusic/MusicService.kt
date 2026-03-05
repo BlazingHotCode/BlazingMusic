@@ -13,6 +13,9 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
+/**
+ * Foreground MediaSession service for background playback and system media controls.
+ */
 class MusicService : MediaSessionService() {
 
     companion object {

@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** Data source that reads local audio metadata from MediaStore. */
 class MusicRepository(private val context: Context) {
 
     suspend fun getAllSongs(): List<Song> = withContext(Dispatchers.IO) {

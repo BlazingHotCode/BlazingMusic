@@ -1,76 +1,92 @@
 # BlazingMusic
 
-A simple Android music player app built with Kotlin and Media3 (ExoPlayer).
+BlazingMusic is a local Android music player built with Kotlin and Media3 (ExoPlayer), with playlist management, queue editing, full-screen player UI, and lock-screen/notification controls.
 
 ## Features
 
-- Display songs from device storage
-- Play/pause music
-- Show now playing info (title, artist, album art)
-- Filter out WhatsApp voice messages
-- Dark theme UI
+- Local library scan from `MediaStore` (WhatsApp voice/audio filtered out)
+- Playback controls: play/pause, next/previous, seek, shuffle, repeat (off/all/one)
+- Queue management: reorder, remove, play next, and persisted queue state
+- Full-screen player opened from mini-player (with gesture interactions)
+- Playlist support: create, rename, delete, per-playlist song view and sorting
+- Multi-select actions for song/playlist bulk operations
+- Search with debounce for smoother filtering
+- Fast-scrolling + alphabetical index in song lists
+- Now-playing row indicator in library and playlist views
+- Media notification + lock-screen controls via `MediaSession`
+- Playback restore on relaunch (queue/index/position)
+- Empty/loading/error permission states for library UI
 
-## Screenshots
+## Developer Documentation
 
-The app features a dark-themed UI with:
+- Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Playback flow: [`docs/PLAYBACK_FLOW.md`](docs/PLAYBACK_FLOW.md)
+- Key components index: [`docs/KEY_COMPONENTS.md`](docs/KEY_COMPONENTS.md)
 
-- Song list with album art
-- Mini player at the bottom
-- Material Design 3 styling
+## Requirements
 
-## Building the Project
-
-### Prerequisites
-
-- Android Studio (Koala or newer)
-- Android SDK (API 24+)
+- Android Studio (Koala or newer recommended)
 - Java 17
+- Android SDK with build tools/platform for this project
+- Android device/emulator (for instrumentation tests)
 
-### Build Commands
+## Build
 
 ```bash
-# Build debug APK
+# Debug APK
 ./gradlew assembleDebug
 
-# Build release APK
+# Release APK
 ./gradlew assembleRelease
-
-# Clean and rebuild
-./gradlew clean assembleDebug
 ```
 
-The APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`
+Debug APK output:
 
-## Permissions Required
+- `app/build/outputs/apk/debug/app-debug.apk`
 
-- `READ_MEDIA_AUDIO` - Access music files (Android 13+)
-- `READ_EXTERNAL_STORAGE` - Access music files (Android 12 and below)
-- `FOREGROUND_SERVICE` - Background playback
-- `POST_NOTIFICATIONS` - Media notifications (Android 13+)
+## Test
 
-## Project Structure
+```bash
+# Unit tests (if present)
+./gradlew testDebugUnitTest
+
+# Espresso/instrumentation tests on connected device/emulator
+./gradlew connectedDebugAndroidTest
+```
+
+## Permissions
+
+- `READ_MEDIA_AUDIO` (Android 13+): read local audio files
+- `READ_EXTERNAL_STORAGE` (Android 12 and below): read local audio files
+- `POST_NOTIFICATIONS` (Android 13+): playback notification controls
+- `FOREGROUND_SERVICE` / media playback service permissions: background playback
+
+## CI
+
+GitHub Actions workflow:
+
+- `.github/workflows/build-debug.yml`
+  - Builds debug APK on push to `main`
+  - Runs Espresso tests on an Android emulator
+  - Uploads APK and test report artifacts
+
+## Project Layout
 
 ```text
-BlazingMusic/
-├── app/
-│   ├── src/main/
-│   │   ├── java/com/blazinghotcode/blazingmusic/
-│   │   │   ├── MainActivity.kt
-│   │   │   ├── Song.kt
-│   │   │   ├── MusicRepository.kt
-│   │   │   ├── MusicViewModel.kt
-│   │   │   ├── MusicService.kt
-│   │   │   └── SongAdapter.kt
-│   │   └── res/
-│   │       ├── layout/
-│   │       └── values/
-│   └── build.gradle.kts
-├── build.gradle.kts
-└── settings.gradle.kts
+app/src/main/java/com/blazinghotcode/blazingmusic/
+  MainActivity.kt
+  MusicViewModel.kt
+  MusicService.kt
+  MusicRepository.kt
+  FullPlayerDialogFragment.kt
+  PlaylistsFragment.kt
+  PlaylistSongsFragment.kt
+  SongAdapter.kt
+  PlaylistAdapter.kt
+  QueueEditorAdapter.kt
+  ...
 ```
-
----
 
 ## License
 
-MIT License - Built with Kotlin & Jetpack
+MIT

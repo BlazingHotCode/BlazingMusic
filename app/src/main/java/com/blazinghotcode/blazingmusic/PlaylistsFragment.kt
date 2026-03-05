@@ -27,6 +27,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 
+/** Playlist list screen for create/search/rename/delete/open actions. */
 class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     companion object {
         private const val SEARCH_DEBOUNCE_MS = 220L

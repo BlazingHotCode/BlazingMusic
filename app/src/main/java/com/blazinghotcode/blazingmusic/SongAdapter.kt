@@ -10,6 +10,7 @@ import coil.load
 import coil.transform.RoundedCornersTransformation
 import com.blazinghotcode.blazingmusic.databinding.ItemSongBinding
 
+/** RecyclerView adapter for songs with now-playing and multi-select states. */
 class SongAdapter(
     private val onSongClick: (Song) -> Unit,
     private val onSongMenuClick: (Song, View) -> Unit,

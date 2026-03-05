@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.media3.common.Player
 
+/** Receiver for notification action intents to control the shared player. */
 class PlaybackNotificationReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {

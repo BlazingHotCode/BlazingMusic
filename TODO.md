@@ -27,7 +27,7 @@
 25. [x] Modernize the full UI/UX and visual design so the app looks polished and production-ready.
 26. [x] Show empty/error states (no songs, permission denied, load failure).
 27. [x] Replace deprecated adapterPosition usage in SongAdapter.
-28. [ ] Add developer-facing code documentation for architecture, playback flow, and key components.
+28. [x] Add developer-facing code documentation for architecture, playback flow, and key components.
 29. [ ] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
 30. [ ] Add analytics/logging hooks for playback errors and skips.
 31. [ ] Add settings screen for default repeat/shuffle behavior and audio focus options.

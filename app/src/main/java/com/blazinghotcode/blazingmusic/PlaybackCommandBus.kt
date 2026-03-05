@@ -4,6 +4,10 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 
+/**
+ * Small bridge for delivering playback actions across app/service timing gaps.
+ * Uses [PlaybackActionStore] so actions survive process/lifecycle timing races.
+ */
 object PlaybackCommandBus {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var callback: ((String) -> Unit)? = null

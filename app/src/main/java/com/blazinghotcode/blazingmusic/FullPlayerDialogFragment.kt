@@ -19,6 +19,7 @@ import androidx.fragment.app.activityViewModels
 import coil.load
 import coil.transform.RoundedCornersTransformation
 
+/** Full-screen player dialog with gesture-based dismiss and queue handoff controls. */
 class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
 
     companion object {

@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.blazinghotcode.blazingmusic.databinding.ItemPlaylistBinding
 
+/** RecyclerView adapter for playlists on the Playlists tab. */
 class PlaylistAdapter(
     private val onPlaylistClick: (Playlist) -> Unit,
     private val onPlaylistMenuClick: (Playlist, View) -> Unit
