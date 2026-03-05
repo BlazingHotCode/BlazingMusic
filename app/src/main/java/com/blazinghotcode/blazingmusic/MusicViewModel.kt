@@ -435,6 +435,23 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         return beforeSize - updatedPaths.size
     }
 
+    fun reorderPlaylistSongs(playlistId: Long, reorderedSongPaths: List<String>): Boolean {
+        val target = playlistsInternal.find { it.id == playlistId } ?: return false
+        if (target.songPaths.size != reorderedSongPaths.size) return false
+
+        val normalized = reorderedSongPaths.distinct()
+        if (normalized.size != target.songPaths.size) return false
+        if (normalized.toSet() != target.songPaths.toSet()) return false
+        if (normalized == target.songPaths) return true
+
+        val updated = target.copy(songPaths = normalized)
+        playlistsInternal = playlistsInternal.map {
+            if (it.id == playlistId) updated else it
+        }
+        publishPlaylists()
+        return true
+    }
+
     fun getPlaylistSongs(playlistId: Long): List<Song> {
         val playlist = playlistsInternal.find { it.id == playlistId } ?: return emptyList()
         if (playlist.songPaths.isEmpty()) return emptyList()

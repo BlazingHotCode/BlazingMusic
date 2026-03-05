@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
@@ -73,6 +74,8 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     private var playlistSongs: List<Song> = emptyList()
     private var filteredSongs: List<Song> = emptyList()
     private var currentSongSort = PlaylistSongSortOption.TITLE
+    private var dragSnapshot: MutableList<Song> = mutableListOf()
+    private var isDragInProgress = false
     private val sortPrefs by lazy {
         requireContext().getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -148,6 +151,65 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = songAdapter
         }
+
+        val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN,
+            0
+        ) {
+            override fun isLongPressDragEnabled(): Boolean = canDragCustomOrder()
+
+            override fun getMovementFlags(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder
+            ): Int {
+                if (!canDragCustomOrder()) return makeMovementFlags(0, 0)
+                return makeMovementFlags(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0)
+            }
+
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                if (!canDragCustomOrder()) return false
+                val from = viewHolder.bindingAdapterPosition
+                val to = target.bindingAdapterPosition
+                if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION || from == to) {
+                    return false
+                }
+                if (dragSnapshot.isEmpty()) {
+                    dragSnapshot = songAdapter.currentList.toMutableList()
+                }
+                val moved = dragSnapshot.removeAt(from)
+                dragSnapshot.add(to, moved)
+                songAdapter.submitList(dragSnapshot.toList())
+                return true
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
+
+            override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                super.onSelectedChanged(viewHolder, actionState)
+                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                    isDragInProgress = true
+                }
+            }
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                if (!isDragInProgress) return
+                isDragInProgress = false
+                if (dragSnapshot.isEmpty()) return
+
+                val reorderedPaths = dragSnapshot.map { it.path }
+                val saved = viewModel.reorderPlaylistSongs(playlistId, reorderedPaths)
+                if (!saved) {
+                    showToast("Unable to save custom order")
+                }
+                dragSnapshot = mutableListOf()
+            }
+        })
+        itemTouchHelper.attachToRecyclerView(rvSongs)
     }
 
     private fun setupPlayerControls() {
@@ -319,6 +381,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             }
         }
         filteredSongs = when (currentSongSort) {
+            PlaylistSongSortOption.CUSTOM -> base
             PlaylistSongSortOption.TITLE -> base.sortedWith(
                 compareBy<Song> { it.title.lowercase() }.thenBy { it.artist.lowercase() }
             )
@@ -339,6 +402,12 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         tvEmpty.visibility = if (filteredSongs.isEmpty()) View.VISIBLE else View.GONE
         val countWord = if (filteredSongs.size == 1) "song" else "songs"
         tvSubtitle.text = "${filteredSongs.size} $countWord"
+    }
+
+    private fun canDragCustomOrder(): Boolean {
+        if (currentSongSort != PlaylistSongSortOption.CUSTOM) return false
+        if (etSearchSongs.text?.isNotBlank() == true) return false
+        return filteredSongs.size > 1
     }
 
     private fun updateShuffleUi(isEnabled: Boolean) {
@@ -407,6 +476,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     }
 
     private enum class PlaylistSongSortOption(val label: String) {
+        CUSTOM("Custom"),
         TITLE("Title"),
         ARTIST("Artist"),
         ALBUM("Album"),
