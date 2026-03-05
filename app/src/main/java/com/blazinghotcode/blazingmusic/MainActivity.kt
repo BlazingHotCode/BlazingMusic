@@ -3,6 +3,7 @@ package com.blazinghotcode.blazingmusic
 import android.Manifest
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -131,6 +132,7 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         setupBackNavigation()
         checkPermissions()
+        handlePlaybackActionIntent(intent)
     }
 
     override fun onStart() {
@@ -140,6 +142,12 @@ class MainActivity : AppCompatActivity() {
         controllerFuture?.addListener({
             // Controller ready
         }, MoreExecutors.directExecutor())
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePlaybackActionIntent(intent)
     }
 
     override fun onStop() {
@@ -237,6 +245,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupMiniPlayerExpandGesture { showFullScreenPlayer() }
+    }
+
+    private fun handlePlaybackActionIntent(intent: Intent?) {
+        val action = intent?.action ?: return
+        when (action) {
+            PlaybackNotificationManager.ACTION_PREVIOUS,
+            PlaybackNotificationManager.ACTION_PLAY_PAUSE,
+            PlaybackNotificationManager.ACTION_NEXT,
+            PlaybackNotificationManager.ACTION_SEEK_BACK,
+            PlaybackNotificationManager.ACTION_SEEK_FORWARD -> {
+                viewModel.handleExternalPlaybackAction(action)
+                intent.action = null
+            }
+        }
     }
 
     private fun setupMiniPlayerExpandGesture(onOpen: () -> Unit) {

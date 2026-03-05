@@ -50,6 +50,18 @@
             </intent-filter>
         </service>
 
+        <receiver
+                android:name=".PlaybackNotificationReceiver"
+                android:exported="true">
+            <intent-filter>
+                <action android:name="com.blazinghotcode.blazingmusic.action.PREVIOUS" />
+                <action android:name="com.blazinghotcode.blazingmusic.action.PLAY_PAUSE" />
+                <action android:name="com.blazinghotcode.blazingmusic.action.NEXT" />
+                <action android:name="com.blazinghotcode.blazingmusic.action.SEEK_BACK" />
+                <action android:name="com.blazinghotcode.blazingmusic.action.SEEK_FORWARD" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

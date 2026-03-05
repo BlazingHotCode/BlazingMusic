@@ -2,12 +2,14 @@ package com.blazinghotcode.blazingmusic
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
@@ -81,11 +83,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun initializePlayer() {
-        exoPlayer = ExoPlayer.Builder(getApplication()).build().apply {
+        val app = getApplication<Application>()
+        app.startService(Intent(app, MusicService::class.java))
+        exoPlayer = SharedPlayer.getOrCreate(app).apply {
             val player = this
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(playing: Boolean) {
                     _isPlaying.postValue(playing)
+                    refreshPlaybackNotification()
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -95,6 +100,20 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     if (playbackState == Player.STATE_ENDED) {
                         handleTrackEnded()
                     }
+                    refreshPlaybackNotification()
+                }
+
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    val path = mediaItem?.localConfiguration?.uri?.toString() ?: return
+                    val index = activeQueue.indexOfFirst { it.path == path }
+                    if (index !in activeQueue.indices) return
+                    if (index != currentQueueIndexInternal) {
+                        currentQueueIndexInternal = index
+                        _currentQueueIndex.postValue(index)
+                        _currentSong.postValue(activeQueue[index])
+                        persistQueueState()
+                    }
+                    refreshPlaybackNotification()
                 }
             })
         }
@@ -131,6 +150,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 persistQueueState(positionOverrideMs = 0L)
             }
+            refreshPlaybackNotification()
         }
     }
 
@@ -160,13 +180,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _shouldRestartQueue.value = false
         _currentSong.value = songToPlay
         persistQueueState(positionOverrideMs = 0L)
-        startPlayback(songToPlay)
+        startPlayback()
     }
 
-    private fun startPlayback(song: Song) {
+    private fun startPlayback() {
         exoPlayer?.let { player ->
-            val mediaItem = MediaItem.fromUri(song.path)
-            player.setMediaItem(mediaItem)
+            val mediaItems = activeQueue.map { mediaItemForSong(it) }
+            val startIndex = currentQueueIndexInternal.coerceIn(0, mediaItems.lastIndex)
+            player.setMediaItems(mediaItems, startIndex, 0L)
             player.prepare()
             player.play()
         }
@@ -180,6 +201,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 player.play()
             }
             persistPlaybackPosition()
+            refreshPlaybackNotification()
         }
     }
 
@@ -252,6 +274,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val clamped = position.coerceAtLeast(0L)
         exoPlayer?.seekTo(clamped)
         persistQueueState(positionOverrideMs = clamped)
+        refreshPlaybackNotification()
+    }
+
+    fun seekBy(deltaMs: Long) {
+        val nextPosition = (getCurrentPosition() + deltaMs).coerceAtLeast(0L)
+        seekTo(nextPosition)
     }
 
     fun addSongToQueue(song: Song) {
@@ -279,7 +307,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val selected = activeQueue[index]
         _currentSong.value = selected
         persistQueueState(positionOverrideMs = 0L)
-        startPlayback(selected)
+        startPlayback()
     }
 
     fun restartQueueFromBeginning() {
@@ -326,6 +354,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 currentQueueIndexInternal = -1
                 _currentQueueIndex.value = -1
                 persistQueueState(positionOverrideMs = 0L)
+                refreshPlaybackNotification()
             } else {
                 val fallbackIndex = index.coerceAtMost(activeQueue.lastIndex)
                 playSongAt(fallbackIndex)
@@ -526,9 +555,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun prepareRestoredSong(song: Song, positionMs: Long) {
         exoPlayer?.let { player ->
             try {
-                player.setMediaItem(MediaItem.fromUri(song.path))
+                val mediaItems = activeQueue.map { mediaItemForSong(it) }
+                val startIndex = currentQueueIndexInternal.coerceIn(0, mediaItems.lastIndex)
+                player.setMediaItems(mediaItems, startIndex, positionMs.coerceAtLeast(0L))
                 player.prepare()
-                player.seekTo(positionMs.coerceAtLeast(0L))
             } catch (error: Throwable) {
                 Log.w(TAG, "Failed to prepare restored song ${song.path}", error)
             }
@@ -537,6 +567,40 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun persistPlaybackPosition() {
         persistQueueState()
+        refreshPlaybackNotification()
+    }
+
+    fun handleExternalPlaybackAction(action: String) {
+        handleNotificationAction(action)
+    }
+
+    private fun handleNotificationAction(action: String) {
+        when (action) {
+            PlaybackNotificationManager.ACTION_PREVIOUS -> playPrevious()
+            PlaybackNotificationManager.ACTION_PLAY_PAUSE -> {
+                if (_shouldRestartQueue.value == true) restartQueueFromBeginning() else playPause()
+            }
+            PlaybackNotificationManager.ACTION_NEXT -> playNext()
+            PlaybackNotificationManager.ACTION_SEEK_BACK -> seekBy(-10_000L)
+            PlaybackNotificationManager.ACTION_SEEK_FORWARD -> seekBy(10_000L)
+        }
+    }
+
+    private fun refreshPlaybackNotification() {
+        // Media notification is provided by MusicService + MediaSession.
+    }
+
+    private fun mediaItemForSong(song: Song): MediaItem {
+        return MediaItem.Builder()
+            .setUri(song.path)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(song.title)
+                    .setArtist(song.artist)
+                    .setAlbumTitle(song.album)
+                    .build()
+            )
+            .build()
     }
 
     private fun publishPlaylists() {
@@ -650,7 +714,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
-        exoPlayer?.release()
         exoPlayer = null
     }
 }

@@ -72,6 +72,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.activity:activity-ktx:1.8.2")
     implementation("androidx.fragment:fragment-ktx:1.6.2")
+    implementation("androidx.media:media:1.7.0")
 
     // Media Playback (Media3 ExoPlayer)
     implementation("androidx.media3:media3-exoplayer:1.2.1")
