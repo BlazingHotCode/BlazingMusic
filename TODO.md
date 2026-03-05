@@ -33,5 +33,6 @@
 31. [x] Add settings screen for default repeat/shuffle behavior and audio focus options.
 32. [x] Add YouTube API integration to fetch/play songs from YouTube sources.
 33. [x] Replace YouTube Music handoff with Metrolist-style in-app YouTube audio playback (no external app handoff).
-34. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
-35. [ ] Centralize YouTube search defaults (e.g., `songsOnly`) into one source of truth shared by Fragment, Activity, and XML.
+34. [ ] Refactor duplicated UI/playback code into modular shared components (reduce near-identical implementations like song entry rows across Home/Playlist and similar feature variants with only minor differences).
+35. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
+36. [ ] Centralize YouTube search defaults (e.g., `songsOnly`) into one source of truth shared by Fragment, Activity, and XML.
