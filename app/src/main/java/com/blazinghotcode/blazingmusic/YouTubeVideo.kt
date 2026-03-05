@@ -20,5 +20,9 @@ data class YouTubeVideo(
     val type: YouTubeItemType = YouTubeItemType.UNKNOWN,
     val videoId: String? = null,
     val browseId: String? = null,
-    val browseParams: String? = null
+    val browseParams: String? = null,
+    val sourcePlaylistId: String? = null,
+    val sourcePlaylistSetVideoId: String? = null,
+    val sourceParams: String? = null,
+    val sourceIndex: Int? = null
 )

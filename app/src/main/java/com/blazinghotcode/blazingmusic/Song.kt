@@ -10,5 +10,9 @@ data class Song (
     val dateAddedSeconds: Long,
     val path: String,
     val albumArtUri: String?,
-    val sourceVideoId: String? = null
+    val sourceVideoId: String? = null,
+    val sourcePlaylistId: String? = null,
+    val sourcePlaylistSetVideoId: String? = null,
+    val sourceParams: String? = null,
+    val sourceIndex: Int? = null
 )

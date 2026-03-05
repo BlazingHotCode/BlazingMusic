@@ -30,9 +30,32 @@ class YouTubeApiClient {
                 filter.params?.let { put("params", it) }
             }
 
-        return post("search", body)
-            ?.let { parseShelfItems(it).take(maxResults.coerceIn(1, 100)) }
-            .orEmpty()
+        val capped = maxResults.coerceIn(1, 100)
+        val collected = mutableListOf<YouTubeVideo>()
+        val seen = hashSetOf<String>()
+        val visitedContinuations = hashSetOf<String>()
+
+        var root = post("search", body)
+        var pages = 0
+        while (root != null && pages < 5 && collected.size < capped) {
+            pages += 1
+            parseShelfItems(root)
+                .forEach { item ->
+                    val key = item.videoId ?: item.id
+                    if (seen.add(key)) collected += item
+                }
+            if (collected.size >= capped) break
+
+            val continuation = extractPlaylistPanelContinuation(root)
+                ?.takeIf { visitedContinuations.add(it) }
+                ?: break
+            val continuationBody = JSONObject()
+                .put("context", contextObject())
+                .put("continuation", continuation)
+            root = post("search", continuationBody)
+        }
+
+        return collected.take(capped)
     }
 
     suspend fun browseCollection(
@@ -53,18 +76,291 @@ class YouTubeApiClient {
         maxResults: Int = 300
     ): YouTubeBrowsePage {
         if (browseId.isBlank()) return YouTubeBrowsePage(emptyList())
-        val body = JSONObject()
+        val capped = maxResults.coerceIn(1, 2000)
+        val initialBody = JSONObject()
             .put("context", contextObject())
             .put("browseId", browseId)
             .apply {
                 if (!params.isNullOrBlank()) put("params", params)
             }
 
-        val root = post("browse", body) ?: return YouTubeBrowsePage(emptyList())
+        val collected = mutableListOf<YouTubeVideo>()
+        val seen = hashSetOf<String>()
+        val visitedContinuations = hashSetOf<String>()
+
+        var root = post("browse", initialBody)
+        var artistInfo: YouTubeArtistInfo? = null
+        var pages = 0
+        while (root != null && pages < 8 && collected.size < capped) {
+            pages += 1
+            if (artistInfo == null) {
+                artistInfo = parseArtistInfo(root)
+            }
+            parseShelfItems(root)
+                .forEach { item ->
+                    val key = item.videoId ?: item.id
+                    if (seen.add(key)) collected += item
+                }
+            if (collected.size >= capped) break
+
+            val continuation = extractPlaylistPanelContinuation(root)
+                ?.takeIf { visitedContinuations.add(it) }
+                ?: break
+            val continuationBody = JSONObject()
+                .put("context", contextObject())
+                .put("continuation", continuation)
+            root = post("browse", continuationBody)
+        }
+
         return YouTubeBrowsePage(
-            items = parseShelfItems(root).take(maxResults.coerceIn(1, 2000)),
-            artistInfo = parseArtistInfo(root)
+            items = collected.take(capped),
+            artistInfo = artistInfo
         )
+    }
+
+    suspend fun fetchRadioCandidates(
+        videoId: String,
+        playlistId: String? = null,
+        playlistSetVideoId: String? = null,
+        params: String? = null,
+        index: Int? = null,
+        fallbackQuery: String? = null,
+        maxResults: Int = 60
+    ): List<YouTubeVideo> {
+        if (videoId.isBlank()) return emptyList()
+        return fetchRadioCandidatesInternal(
+            endpoint = RadioWatchEndpoint(
+                videoId = videoId,
+                playlistId = playlistId,
+                playlistSetVideoId = playlistSetVideoId,
+                params = params,
+                index = index
+            ),
+            fallbackQuery = fallbackQuery,
+            maxResults = maxResults,
+            depth = 0,
+            visited = linkedSetOf()
+        )
+    }
+
+    private suspend fun fetchRadioCandidatesInternal(
+        endpoint: RadioWatchEndpoint,
+        fallbackQuery: String?,
+        maxResults: Int,
+        depth: Int,
+        visited: MutableSet<String>
+    ): List<YouTubeVideo> {
+        if ((endpoint.videoId.isBlank() && endpoint.playlistId.isNullOrBlank()) || depth > 2) return emptyList()
+        val endpointKey = listOf(
+            endpoint.videoId,
+            endpoint.playlistId.orEmpty(),
+            endpoint.playlistSetVideoId.orEmpty(),
+            endpoint.params.orEmpty(),
+            endpoint.index?.toString().orEmpty()
+        ).joinToString("|")
+        if (!visited.add(endpointKey)) return emptyList()
+
+        val cappedResults = maxResults.coerceIn(1, 300)
+        val collected = mutableListOf<YouTubeVideo>()
+        var continuation: String? = null
+        var lastRoot: JSONObject? = null
+        var page = 0
+        while (page < 5) {
+            val root = postNext(endpoint, continuation) ?: break
+            lastRoot = root
+            page += 1
+
+            val pageItems = (parseShelfItems(root) + parsePlaylistPanelItems(root))
+                .filter { !it.videoId.isNullOrBlank() }
+
+            pageItems.forEach { candidate ->
+                val key = candidate.videoId ?: candidate.id
+                if (collected.none { (it.videoId ?: it.id) == key }) {
+                    collected += candidate
+                }
+            }
+            if (collected.size >= cappedResults) break
+
+            continuation = extractPlaylistPanelContinuation(root)
+            if (continuation.isNullOrBlank()) break
+        }
+
+        if (collected.isNotEmpty()) {
+            return collected.take(cappedResults)
+        }
+
+        val automixEndpoint = lastRoot?.let(::extractAutomixWatchEndpoint)
+        if (automixEndpoint != null) {
+            val automix = fetchRadioCandidatesInternal(
+                endpoint = automixEndpoint,
+                fallbackQuery = fallbackQuery,
+                maxResults = maxResults,
+                depth = depth + 1,
+                visited = visited
+            )
+            if (automix.isNotEmpty()) return automix
+        }
+
+        val query = fallbackQuery?.trim().orEmpty()
+        if (query.isEmpty()) return emptyList()
+        return searchMusicVideos(
+            query = query,
+            maxResults = maxResults.coerceIn(1, 100),
+            filter = YouTubeSearchFilter.SONGS
+        )
+            .filter { !it.videoId.isNullOrBlank() }
+            .distinctBy { it.videoId ?: it.id }
+    }
+
+    private suspend fun postNext(endpoint: RadioWatchEndpoint, continuation: String?): JSONObject? {
+        val body = JSONObject()
+            .put("context", contextObject())
+            .put("isAudioOnly", true)
+            .apply {
+                endpoint.videoId.takeIf { it.isNotBlank() }?.let { put("videoId", it) }
+                endpoint.playlistId?.takeIf { it.isNotBlank() }?.let { put("playlistId", it) }
+                endpoint.playlistSetVideoId?.takeIf { it.isNotBlank() }?.let { put("playlistSetVideoId", it) }
+                endpoint.params?.takeIf { it.isNotBlank() }?.let { put("params", it) }
+                endpoint.index?.let { put("index", it) }
+                continuation?.takeIf { it.isNotBlank() }?.let { put("continuation", it) }
+            }
+        return post("next", body)
+    }
+
+    private fun extractPlaylistPanelContinuation(root: JSONObject): String? {
+        // Prefer known YouTube Music continuation locations first (more stable than deep recursive scan).
+        val prioritized = listOfNotNull(
+            root.optJSONObject("continuationContents")
+                ?.optJSONObject("musicShelfContinuation")
+                ?.optJSONArray("continuations"),
+            root.optJSONObject("continuationContents")
+                ?.optJSONObject("sectionListContinuation")
+                ?.optJSONArray("continuations"),
+            root.optJSONObject("continuationContents")
+                ?.optJSONObject("playlistPanelContinuation")
+                ?.optJSONArray("continuations"),
+            root.optJSONObject("contents")
+                ?.optJSONObject("tabbedSearchResultsRenderer")
+                ?.optJSONArray("tabs")
+                ?.optJSONObject(0)
+                ?.optJSONObject("tabRenderer")
+                ?.optJSONObject("content")
+                ?.optJSONObject("sectionListRenderer")
+                ?.optJSONArray("continuations"),
+            root.optJSONObject("contents")
+                ?.optJSONObject("singleColumnBrowseResultsRenderer")
+                ?.optJSONArray("tabs")
+                ?.optJSONObject(0)
+                ?.optJSONObject("tabRenderer")
+                ?.optJSONObject("content")
+                ?.optJSONObject("sectionListRenderer")
+                ?.optJSONArray("continuations")
+        )
+
+        prioritized.forEach { continuations ->
+            extractContinuationToken(continuations)?.let { return it }
+        }
+        return findContinuationRecursively(root)
+    }
+
+    private fun findContinuationRecursively(node: Any?): String? {
+        when (node) {
+            is JSONObject -> {
+                node.optJSONArray("continuations")?.let { continuations ->
+                    extractContinuationToken(continuations)?.let { return it }
+                }
+
+                val iterator = node.keys()
+                while (iterator.hasNext()) {
+                    findContinuationRecursively(node.opt(iterator.next()))?.let { return it }
+                }
+            }
+            is JSONArray -> {
+                for (i in 0 until node.length()) {
+                    findContinuationRecursively(node.opt(i))?.let { return it }
+                }
+            }
+        }
+        return null
+    }
+
+    private fun extractContinuationToken(continuations: JSONArray): String? {
+        for (i in 0 until continuations.length()) {
+            val continuationObject = continuations.optJSONObject(i)
+            val candidates = listOfNotNull(
+                continuationObject?.optJSONObject("nextContinuationData")
+                    ?.optString("continuation", "")
+                    ?.trim(),
+                continuationObject?.optJSONObject("reloadContinuationData")
+                    ?.optString("continuation", "")
+                    ?.trim()
+            )
+            candidates.firstOrNull { it.isNotBlank() }?.let { return it }
+        }
+        return null
+    }
+
+    private fun parsePlaylistPanelItems(root: JSONObject): List<YouTubeVideo> {
+        val out = mutableListOf<YouTubeVideo>()
+        collectPlaylistPanelRenderers(root, out)
+        return out
+    }
+
+    private fun collectPlaylistPanelRenderers(node: Any?, out: MutableList<YouTubeVideo>) {
+        when (node) {
+            is JSONObject -> {
+                node.optJSONObject("playlistPanelVideoRenderer")?.let { panel ->
+                    val videoId = panel.optString("videoId", "").trim()
+                    if (videoId.isNotEmpty()) {
+                        val title = panel.optJSONObject("title")
+                            ?.optJSONArray("runs")
+                            ?.let(::joinRunsText)
+                            ?.ifBlank { null }
+                            ?: "YouTube Song"
+                        val artist = panel.optJSONObject("shortBylineText")
+                            ?.optJSONArray("runs")
+                            ?.let(::joinRunsText)
+                            ?.ifBlank { null }
+                            ?: "YouTube Music"
+                        val thumb = panel.optJSONObject("thumbnail")
+                            ?.optJSONArray("thumbnails")
+                            ?.let { thumbs ->
+                                var best: String? = null
+                                for (i in 0 until thumbs.length()) {
+                                    val candidate = thumbs.optJSONObject(i)?.optString("url", "")?.trim()
+                                    if (!candidate.isNullOrBlank()) best = candidate
+                                }
+                                best
+                            }
+                        val watchEndpoint = extractWatchEndpoint(panel.optJSONObject("navigationEndpoint")?.optJSONObject("watchEndpoint"))
+
+                        out += YouTubeVideo(
+                            id = "panel:$videoId",
+                            title = decodeHtmlEntities(title),
+                            channelTitle = decodeHtmlEntities(artist),
+                            thumbnailUrl = thumb?.let(::decodeHtmlEntities),
+                            sectionTitle = "Radio",
+                            type = YouTubeItemType.SONG,
+                            videoId = videoId,
+                            sourcePlaylistId = watchEndpoint?.playlistId,
+                            sourcePlaylistSetVideoId = watchEndpoint?.playlistSetVideoId,
+                            sourceParams = watchEndpoint?.params,
+                            sourceIndex = watchEndpoint?.index
+                        )
+                    }
+                }
+
+                val iterator = node.keys()
+                while (iterator.hasNext()) {
+                    collectPlaylistPanelRenderers(node.opt(iterator.next()), out)
+                }
+            }
+            is JSONArray -> {
+                for (i in 0 until node.length()) {
+                    collectPlaylistPanelRenderers(node.opt(i), out)
+                }
+            }
+        }
     }
 
     suspend fun resolveAudioStreamUrl(videoId: String): String? {
@@ -127,7 +423,6 @@ class YouTubeApiClient {
         val response = post(
             path = "player",
             body = body,
-            clientName = clientName,
             clientVersion = clientVersion,
             clientId = clientId,
             userAgent = userAgent
@@ -190,7 +485,6 @@ class YouTubeApiClient {
         return post(
             path = path,
             body = body,
-            clientName = WEB_REMIX_CLIENT_NAME,
             clientVersion = WEB_REMIX_CLIENT_VERSION,
             clientId = WEB_REMIX_CLIENT_ID,
             userAgent = USER_AGENT_WEB
@@ -200,7 +494,6 @@ class YouTubeApiClient {
     private suspend fun post(
         path: String,
         body: JSONObject,
-        clientName: String,
         clientVersion: String,
         clientId: String,
         userAgent: String
@@ -454,6 +747,7 @@ class YouTubeApiClient {
             ?.optJSONArray("runs")
 
         val videoId = extractVideoId(renderer).ifBlank { null }
+        val sourceWatchEndpoint = extractWatchEndpointFromRenderer(renderer)
         val browseEndpoint = extractBrowseEndpoint(renderer, titleRuns)
         val browseId = browseEndpoint.first
         val browseParams = browseEndpoint.second
@@ -479,8 +773,86 @@ class YouTubeApiClient {
             type = type,
             videoId = videoId,
             browseId = browseId,
-            browseParams = browseParams
+            browseParams = browseParams,
+            sourcePlaylistId = sourceWatchEndpoint?.playlistId,
+            sourcePlaylistSetVideoId = sourceWatchEndpoint?.playlistSetVideoId,
+            sourceParams = sourceWatchEndpoint?.params,
+            sourceIndex = sourceWatchEndpoint?.index
         )
+    }
+
+    private fun extractWatchEndpointFromRenderer(renderer: JSONObject): RadioWatchEndpoint? {
+        val candidates = listOf(
+            renderer.optJSONObject("navigationEndpoint")?.optJSONObject("watchEndpoint"),
+            renderer.optJSONObject("navigationEndpoint")?.optJSONObject("watchPlaylistEndpoint"),
+            renderer.optJSONObject("overlay")
+                ?.optJSONObject("musicItemThumbnailOverlayRenderer")
+                ?.optJSONObject("content")
+                ?.optJSONObject("musicPlayButtonRenderer")
+                ?.optJSONObject("playNavigationEndpoint")
+                ?.optJSONObject("watchEndpoint"),
+            renderer.optJSONObject("overlay")
+                ?.optJSONObject("musicItemThumbnailOverlayRenderer")
+                ?.optJSONObject("content")
+                ?.optJSONObject("musicPlayButtonRenderer")
+                ?.optJSONObject("playNavigationEndpoint")
+                ?.optJSONObject("watchPlaylistEndpoint"),
+            renderer.optJSONObject("menu")
+                ?.optJSONObject("menuRenderer")
+                ?.optJSONArray("items")
+                ?.optJSONObject(0)
+                ?.optJSONObject("menuNavigationItemRenderer")
+                ?.optJSONObject("navigationEndpoint")
+                ?.optJSONObject("watchPlaylistEndpoint")
+        )
+        return candidates.asSequence()
+            .mapNotNull { extractWatchEndpoint(it) }
+            .firstOrNull()
+    }
+
+    private fun extractWatchEndpoint(raw: JSONObject?): RadioWatchEndpoint? {
+        raw ?: return null
+        val videoId = raw.optString("videoId", "").trim().ifBlank { null }
+        val playlistId = raw.optString("playlistId", "").trim().ifBlank { null }
+        val playlistSetVideoId = raw.optString("playlistSetVideoId", "").trim().ifBlank { null }
+        val params = raw.optString("params", "").trim().ifBlank { null }
+        val index = if (raw.has("index") && !raw.isNull("index")) raw.optInt("index") else null
+        if (videoId.isNullOrBlank() && playlistId.isNullOrBlank()) return null
+        return RadioWatchEndpoint(
+            videoId = videoId.orEmpty(),
+            playlistId = playlistId,
+            playlistSetVideoId = playlistSetVideoId,
+            params = params,
+            index = index
+        )
+    }
+
+    private fun extractAutomixWatchEndpoint(root: JSONObject): RadioWatchEndpoint? {
+        return findWatchPlaylistEndpointRecursively(root)
+    }
+
+    private fun findWatchPlaylistEndpointRecursively(node: Any?): RadioWatchEndpoint? {
+        when (node) {
+            is JSONObject -> {
+                node.optJSONObject("automixPlaylistVideoRenderer")
+                    ?.optJSONObject("navigationEndpoint")
+                    ?.optJSONObject("watchPlaylistEndpoint")
+                    ?.let { endpointJson ->
+                        extractWatchEndpoint(endpointJson)?.let { return it }
+                    }
+
+                val iterator = node.keys()
+                while (iterator.hasNext()) {
+                    findWatchPlaylistEndpointRecursively(node.opt(iterator.next()))?.let { return it }
+                }
+            }
+            is JSONArray -> {
+                for (i in 0 until node.length()) {
+                    findWatchPlaylistEndpointRecursively(node.opt(i))?.let { return it }
+                }
+            }
+        }
+        return null
     }
 
     private fun detectType(renderer: JSONObject, shelfTitle: String?, hasVideoId: Boolean): YouTubeItemType {
@@ -563,6 +935,14 @@ class YouTubeApiClient {
             ?.optString("videoId", "")
             .orEmpty()
             .trim()
+            .ifBlank {
+                renderer
+                    .optJSONObject("navigationEndpoint")
+                    ?.optJSONObject("watchPlaylistEndpoint")
+                    ?.optString("videoId", "")
+                    .orEmpty()
+                    .trim()
+            }
     }
 
     private fun extractBrowseEndpoint(renderer: JSONObject, titleRuns: JSONArray?): Pair<String?, String?> {
@@ -779,4 +1159,12 @@ class YouTubeApiClient {
         private const val USER_AGENT_ANDROID =
             "com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip"
     }
+
+    private data class RadioWatchEndpoint(
+        val videoId: String,
+        val playlistId: String? = null,
+        val playlistSetVideoId: String? = null,
+        val params: String? = null,
+        val index: Int? = null
+    )
 }
