@@ -3,6 +3,7 @@ package com.blazinghotcode.blazingmusic
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -47,6 +48,17 @@ class PlaylistAdapter(
             binding.tvPlaylistName.text = playlist.name
             val songsWord = if (playlist.songPaths.size == 1) "song" else "songs"
             binding.tvPlaylistCount.text = "${playlist.songPaths.size} $songsWord"
+            if (playlist.isLocalMusicSystemPlaylist()) {
+                binding.ivPlaylist.setImageResource(R.drawable.ml_library_music_filled)
+                binding.ivPlaylist.imageTintList =
+                    ContextCompat.getColorStateList(binding.root.context, R.color.accent_lavender)
+                binding.ivPlaylist.contentDescription = "Local music playlist"
+            } else {
+                binding.ivPlaylist.setImageResource(R.drawable.ml_playlist_play)
+                binding.ivPlaylist.imageTintList =
+                    ContextCompat.getColorStateList(binding.root.context, R.color.accent_lavender)
+                binding.ivPlaylist.contentDescription = "Playlist"
+            }
         }
     }
 

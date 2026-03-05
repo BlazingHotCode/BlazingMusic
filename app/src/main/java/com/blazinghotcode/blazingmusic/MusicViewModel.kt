@@ -31,6 +31,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_CURRENT_QUEUE_INDEX = "current_queue_index"
         private const val KEY_CURRENT_POSITION_MS = "current_position_ms"
         private const val KEY_PLAYLISTS_JSON = "playlists_json"
+        private const val LOCAL_MUSIC_PLAYLIST_ID = PlaylistSystem.LOCAL_MUSIC_ID
         private const val PREVIOUS_RESTART_THRESHOLD_MS = 4_000L
         private const val TAG = "MusicViewModel"
     }
@@ -159,6 +160,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 normalQueue = repository.getAllSongs()
                 _songs.value = normalQueue
+                ensureLocalMusicPlaylist()
                 _libraryLoadState.value = if (normalQueue.isEmpty()) {
                     LibraryLoadState.Empty
                 } else {
@@ -191,6 +193,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     persistQueueState(positionOverrideMs = 0L)
                 }
+                ensureLocalMusicPlaylist()
                 refreshPlaybackNotification()
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to load songs", t)
@@ -480,6 +483,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun renamePlaylist(playlistId: Long, newName: String): Boolean {
+        if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return false
         val trimmed = newName.trim()
         if (trimmed.isEmpty()) return false
         if (playlistsInternal.any { it.id != playlistId && it.name.equals(trimmed, ignoreCase = true) }) {
@@ -497,6 +501,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deletePlaylist(playlistId: Long): Boolean {
+        if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return false
         val beforeSize = playlistsInternal.size
         playlistsInternal = playlistsInternal.filterNot { it.id == playlistId }
         if (playlistsInternal.size == beforeSize) return false
@@ -509,6 +514,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addSongsToPlaylist(playlistId: Long, songs: List<Song>): Int {
+        if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return 0
         if (songs.isEmpty()) return 0
 
         val target = playlistsInternal.find { it.id == playlistId } ?: return 0
@@ -525,6 +531,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun removeSongsFromPlaylist(playlistId: Long, songPaths: Set<String>): Int {
+        if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return 0
         if (songPaths.isEmpty()) return 0
         val target = playlistsInternal.find { it.id == playlistId } ?: return 0
         val beforeSize = target.songPaths.size
@@ -540,6 +547,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reorderPlaylistSongs(playlistId: Long, reorderedSongPaths: List<String>): Boolean {
+        if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return false
         val target = playlistsInternal.find { it.id == playlistId } ?: return false
         if (target.songPaths.size != reorderedSongPaths.size) return false
 
@@ -557,6 +565,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun getPlaylistSongs(playlistId: Long): List<Song> {
+        if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) {
+            return (_songs.value ?: normalQueue).distinctBy { it.path }
+        }
         val playlist = playlistsInternal.find { it.id == playlistId } ?: return emptyList()
         if (playlist.songPaths.isEmpty()) return emptyList()
         val songsByPath = (_songs.value ?: normalQueue).associateBy { it.path }
@@ -709,6 +720,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadPersistedPlaylists() {
         val raw = prefs.getString(KEY_PLAYLISTS_JSON, null) ?: run {
             playlistsInternal = emptyList()
+            ensureLocalMusicPlaylist()
             _playlists.value = playlistsInternal
             return
         }
@@ -720,7 +732,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     val json = jsonArray.optJSONObject(index) ?: continue
                     val id = json.optLong("id", -1L)
                     val name = json.optString("name", "").trim()
-                    if (id <= 0L || name.isEmpty()) continue
+                    if (id <= 0L || name.isEmpty() || id == LOCAL_MUSIC_PLAYLIST_ID) continue
 
                     val songsArray = json.optJSONArray("song_paths") ?: JSONArray()
                     val paths = buildList {
@@ -742,12 +754,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Throwable) {
             emptyList()
         }
+        ensureLocalMusicPlaylist()
         _playlists.value = playlistsInternal
     }
 
     private fun persistPlaylists() {
         val jsonArray = JSONArray()
-        playlistsInternal.forEach { playlist ->
+        playlistsInternal
+            .filterNot { it.id == LOCAL_MUSIC_PLAYLIST_ID }
+            .forEach { playlist ->
             val playlistJson = JSONObject()
                 .put("id", playlist.id)
                 .put("name", playlist.name)
@@ -758,6 +773,18 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit()
             .putString(KEY_PLAYLISTS_JSON, jsonArray.toString())
             .commit()
+    }
+
+    private fun ensureLocalMusicPlaylist() {
+        val localPaths = (_songs.value ?: normalQueue).map { it.path }.distinct()
+        val localPlaylist = Playlist(
+            id = LOCAL_MUSIC_PLAYLIST_ID,
+            name = PlaylistSystem.LOCAL_MUSIC_NAME,
+            songPaths = localPaths
+        )
+        val others = playlistsInternal.filterNot { it.id == LOCAL_MUSIC_PLAYLIST_ID }
+        playlistsInternal = listOf(localPlaylist) + others
+        _playlists.value = playlistsInternal
     }
 
     private fun restorePersistedQueue(allSongs: List<Song>): Pair<List<Song>?, Int> {

@@ -1,8 +1,10 @@
 package com.blazinghotcode.blazingmusic
 
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.text.Layout
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.TypedValue
@@ -21,6 +23,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -37,6 +41,7 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     private lateinit var rvPlaylists: RecyclerView
     private lateinit var tvEmpty: TextView
     private lateinit var tvPlaylistCount: TextView
+    private lateinit var tvTitle: TextView
     private lateinit var etSearchPlaylists: EditText
     private lateinit var btnCreatePlaylist: View
     private lateinit var btnBack: ImageButton
@@ -48,6 +53,7 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         initViews(view)
+        applyHeaderInsets(view)
         setupRecycler()
         setupActions()
         observeData()
@@ -57,11 +63,45 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
         rvPlaylists = root.findViewById(R.id.rvPlaylists)
         tvEmpty = root.findViewById(R.id.tvEmpty)
         tvPlaylistCount = root.findViewById(R.id.tvPlaylistCount)
+        tvTitle = root.findViewById(R.id.tvTitle)
         etSearchPlaylists = root.findViewById(R.id.etSearchPlaylists)
         btnCreatePlaylist = root.findViewById(R.id.btnCreatePlaylist)
         btnBack = root.findViewById(R.id.btnBack)
 
+        applyHeaderTitleSizing(tvTitle)
         tintSearchStartIcon()
+    }
+
+    private fun applyHeaderTitleSizing(titleView: TextView) {
+        val text = titleView.text?.toString().orEmpty().trim()
+        val isSingleWord = text.isNotEmpty() && text.none { it.isWhitespace() }
+        titleView.maxLines = if (isSingleWord) 1 else 2
+        titleView.ellipsize = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            titleView.breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
+            titleView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
+        }
+    }
+
+    private fun applyHeaderInsets(root: View) {
+        val topGap = dp(6)
+        val back = btnBack
+        val title = root.findViewById<TextView>(R.id.tvTitle)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val topInset = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            (back.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+                lp.topMargin = topInset + topGap
+                back.layoutParams = lp
+            }
+            title?.let { header ->
+                (header.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+                    lp.marginEnd = maxOf(lp.marginEnd, dp(16))
+                    header.layoutParams = lp
+                }
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun setupRecycler() {
@@ -128,9 +168,11 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
             anchor
         ).apply {
             menu.add(Menu.NONE, 1, Menu.NONE, "Open")
-            menu.add(Menu.NONE, 2, Menu.NONE, "Rename")
-            menu.add(Menu.NONE, 3, Menu.NONE, "Delete")
-            menu.add(Menu.NONE, 4, Menu.NONE, "Select multiple")
+            if (!playlist.isLocalMusicSystemPlaylist()) {
+                menu.add(Menu.NONE, 2, Menu.NONE, "Rename")
+                menu.add(Menu.NONE, 3, Menu.NONE, "Delete")
+                menu.add(Menu.NONE, 4, Menu.NONE, "Select multiple")
+            }
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     1 -> {
@@ -157,19 +199,20 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     }
 
     private fun showMultiSelectPlaylistsDialog() {
-        if (allPlaylists.isEmpty()) {
+        val editablePlaylists = allPlaylists.filterNot { it.isLocalMusicSystemPlaylist() }
+        if (editablePlaylists.isEmpty()) {
             showToast("No playlists yet")
             return
         }
         showMultiSelectBottomSheet(
             title = "Select playlists",
-            items = allPlaylists.map {
+            items = editablePlaylists.map {
                 val songsWord = if (it.songPaths.size == 1) "song" else "songs"
                 "${it.name} (${it.songPaths.size} $songsWord)"
             },
             confirmLabel = "Delete selected"
         ) { selectedIndices ->
-            val selected = allPlaylists.filterIndexed { index, _ -> selectedIndices.contains(index) }
+            val selected = editablePlaylists.filterIndexed { index, _ -> selectedIndices.contains(index) }
             if (selected.isEmpty()) {
                 showToast("No playlists selected")
                 return@showMultiSelectBottomSheet
@@ -200,6 +243,10 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     }
 
     private fun showRenamePlaylistDialog(playlist: Playlist) {
+        if (playlist.isLocalMusicSystemPlaylist()) {
+            showToast("Local music playlist cannot be renamed")
+            return
+        }
         showTextInputBottomSheet(
             title = "Rename playlist",
             hint = "Playlist name",
@@ -212,6 +259,10 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     }
 
     private fun showDeletePlaylistDialog(playlist: Playlist) {
+        if (playlist.isLocalMusicSystemPlaylist()) {
+            showToast("Local music playlist cannot be deleted")
+            return
+        }
         showConfirmBottomSheet(
             title = "Delete playlist",
             message = "Delete \"${playlist.name}\"?",
