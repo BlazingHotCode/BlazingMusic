@@ -14,6 +14,8 @@ import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import androidx.test.espresso.matcher.ViewMatchers.withHint
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
+import androidx.test.espresso.matcher.ViewMatchers.Visibility
+import androidx.test.espresso.matcher.ViewMatchers.withEffectiveVisibility
 import androidx.test.espresso.NoMatchingViewException
 import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
 import androidx.test.espresso.UiController
@@ -52,16 +54,85 @@ class MainActivityEspressoTest {
     fun appLaunchesAndBottomNavVisible() {
         onView(withId(R.id.bottomNav)).check(matches(isDisplayed()))
         onView(withId(R.id.navHome)).check(matches(isDisplayed()))
+        onView(withId(R.id.navSearch)).check(matches(isDisplayed()))
         onView(withId(R.id.navPlaylists)).check(matches(isDisplayed()))
     }
 
     @Test
     fun canSwitchTabsWithoutCrash() {
+        onView(withId(R.id.navSearch)).perform(click())
+        onView(withId(R.id.youtubeContainer)).check(matches(isDisplayed()))
+
         onView(withId(R.id.navPlaylists)).perform(click())
         onView(withId(R.id.playlistContainer)).check(matches(isDisplayed()))
 
         onView(withId(R.id.navHome)).perform(click())
         onView(withId(R.id.bottomNav)).check(matches(isDisplayed()))
+    }
+
+    @Test
+    fun searchTabControlsVisibleAndFilterSwitches() {
+        onView(withId(R.id.navSearch)).perform(click())
+        waitForUi()
+        onView(withId(R.id.etYouTubeSearch)).check(matches(isDisplayed()))
+        onView(withId(R.id.btnRunYouTubeSearch)).check(matches(isDisplayed()))
+        onView(withId(R.id.btnSearchFilter)).check(matches(isDisplayed()))
+
+        onView(withId(R.id.btnSearchFilter)).perform(click())
+        onView(withText("Songs")).perform(click())
+        onView(withId(R.id.btnSearchFilter)).check(matches(withText("Songs")))
+    }
+
+    @Test
+    fun albumBrowseShellOpensFromSearchTab() {
+        activityRule.scenario.onActivity { activity ->
+            activity.openSearchTab()
+            activity.openYouTubeBrowse(
+                YouTubeVideo(
+                    id = "album-test",
+                    title = "Test Album",
+                    channelTitle = "Test Artist",
+                    thumbnailUrl = null,
+                    type = YouTubeItemType.ALBUM,
+                    browseId = "TEST_ALBUM_BROWSE_ID"
+                )
+            )
+        }
+        waitForUi(600)
+        onView(allOf(withId(R.id.tvTitle), withText("Album"), isDisplayed()))
+            .check(matches(isDisplayed()))
+        onView(withId(R.id.btnPlayAll)).check(matches(isDisplayed()))
+        onView(withId(R.id.artistActionRow)).check(matches(withEffectiveVisibility(Visibility.GONE)))
+    }
+
+    @Test
+    fun artistBrowseShellOpensFromSearchTab() {
+        activityRule.scenario.onActivity { activity ->
+            activity.openSearchTab()
+            activity.openYouTubeBrowse(
+                YouTubeVideo(
+                    id = "artist-test",
+                    title = "Test Artist",
+                    channelTitle = "Test Channel",
+                    thumbnailUrl = null,
+                    type = YouTubeItemType.ARTIST,
+                    browseId = "TEST_ARTIST_BROWSE_ID"
+                )
+            )
+        }
+        waitForUi(600)
+        onView(allOf(withId(R.id.tvTitle), withText("Artist"), isDisplayed()))
+            .check(matches(isDisplayed()))
+        onView(withId(R.id.artistActionRow)).check(matches(isDisplayed()))
+        onView(withId(R.id.btnPlayAll)).check(matches(withEffectiveVisibility(Visibility.GONE)))
+    }
+
+    @Test
+    fun settingsScreenOpenAndBackWithoutCrash() {
+        onView(withId(R.id.btnSettings)).perform(click())
+        waitForUi(300)
+        pressBack()
+        waitForUi(300)
     }
 
     @Test
