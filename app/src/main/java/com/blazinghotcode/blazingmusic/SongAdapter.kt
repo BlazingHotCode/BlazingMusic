@@ -84,29 +84,26 @@ class SongAdapter(
     inner class SongViewHolder(
         private val binding: ItemSongBinding
     ) : RecyclerView.ViewHolder(binding.root) {
+        private var boundSong: Song? = null
 
         init {
             binding.root.setOnClickListener {
-                val position = bindingAdapterPosition
-                if (position != RecyclerView.NO_POSITION) {
-                    val song = getItem(position)
-                    if (isSelectionModeEnabled) {
-                        toggleSelection(song)
-                    } else {
-                        onSongClick(song)
-                    }
+                val song = boundSong ?: return@setOnClickListener
+                if (isSelectionModeEnabled) {
+                    toggleSelection(song)
+                } else {
+                    onSongClick(song)
                 }
             }
 
             binding.btnSongMore.setOnClickListener { anchor ->
-                val position = bindingAdapterPosition
-                if (position != RecyclerView.NO_POSITION) {
-                    onSongMenuClick(getItem(position), anchor)
-                }
+                val song = boundSong ?: return@setOnClickListener
+                onSongMenuClick(song, anchor)
             }
         }
 
         fun bind(song: Song) {
+            boundSong = song
             val isNowPlaying = song.path == currentSongPath
             binding.tvTitle.text = song.title
             binding.tvArtist.text = song.artist

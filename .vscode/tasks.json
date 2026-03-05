@@ -87,6 +87,19 @@
       "problemMatcher": []
     },
     {
+      "label": "Run Espresso Tests",
+      "type": "shell",
+      "command": "./gradlew :app:assembleDebug :app:assembleDebugAndroidTest && /home/blazinghg/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk && /home/blazinghg/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk && /home/blazinghg/Android/Sdk/platform-tools/adb shell am instrument -w com.blazinghotcode.blazingmusic.test/androidx.test.runner.AndroidJUnitRunner",
+      "options": {
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+          "PATH": "/usr/lib/jvm/java-17-openjdk-amd64/bin:${env:PATH}"
+        }
+      },
+      "group": "test",
+      "problemMatcher": ["$gradle"]
+    },
+    {
       "label": "Uninstall App",
       "type": "shell",
       "command": "/home/blazinghg/Android/Sdk/platform-tools/adb uninstall com.blazinghotcode.blazingmusic",
