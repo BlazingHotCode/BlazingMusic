@@ -16,6 +16,7 @@ BlazingMusic is a local Android music player built with Kotlin and Media3 (ExoPl
 - Media notification + lock-screen controls via `MediaSession`
 - Playback restore on relaunch (queue/index/position)
 - Empty/loading/error permission states for library UI
+- Playback analytics/logging hooks for errors, skips, and transitions
 
 ## Developer Documentation
 
@@ -53,6 +54,12 @@ Debug APK output:
 # Espresso/instrumentation tests on connected device/emulator
 ./gradlew connectedDebugAndroidTest
 ```
+
+## Debug Tools
+
+- Playback analytics viewer (debug builds):
+  - Long-press the Home title (`BLAZING MUSIC`) to open "Playback analytics (last 20)".
+  - Shows recent skip/transition/error events without needing `adb logcat`.
 
 ## Permissions
 

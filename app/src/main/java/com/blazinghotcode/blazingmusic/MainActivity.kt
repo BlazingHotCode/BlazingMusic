@@ -96,6 +96,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHomeStateTitle: TextView
     private lateinit var tvHomeStateMessage: TextView
     private lateinit var btnHomeStateAction: Button
+    private lateinit var tvHomeTitle: TextView
     private lateinit var songAlphabetIndex: AlphabetIndexView
     private lateinit var songScrollTrack: View
     private lateinit var songScrollThumb: View
@@ -229,14 +230,40 @@ class MainActivity : AppCompatActivity() {
         tvHomeStateTitle = findViewById(R.id.tvHomeStateTitle)
         tvHomeStateMessage = findViewById(R.id.tvHomeStateMessage)
         btnHomeStateAction = findViewById(R.id.btnHomeStateAction)
+        tvHomeTitle = findViewById(R.id.tvTitle)
         songAlphabetIndex = findViewById(R.id.songAlphabetIndex)
         songScrollTrack = findViewById(R.id.songScrollTrack)
         songScrollThumb = findViewById(R.id.songScrollThumb)
         playlistContainer = findViewById(R.id.playlistContainer)
         currentSongSort = loadHomeSort()
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
+        setupDebugAnalyticsViewer()
         tintSearchStartIcon()
         applySystemInsets()
+    }
+
+    private fun setupDebugAnalyticsViewer() {
+        val isDebuggable = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (!isDebuggable) return
+        tvHomeTitle.setOnLongClickListener {
+            showPlaybackAnalyticsDebugDialog()
+            true
+        }
+    }
+
+    private fun showPlaybackAnalyticsDebugDialog() {
+        val events = PlaybackAnalyticsLogger.recentEventsSnapshot()
+        val message = if (events.isEmpty()) {
+            "No playback analytics events yet.\n\n" +
+                "Trigger play/pause/next/previous or wait for a track transition."
+        } else {
+            events.joinToString(separator = "\n\n")
+        }
+        dialogBuilder()
+            .setTitle("Playback analytics (last 20)")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .showStyledDialog()
     }
 
     private fun setupRecyclerView() {

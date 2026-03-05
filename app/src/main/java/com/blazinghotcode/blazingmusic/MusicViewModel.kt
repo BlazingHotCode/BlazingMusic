@@ -111,16 +111,33 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    val previousSong = _currentSong.value
                     val path = mediaItem?.localConfiguration?.uri?.toString() ?: return
                     val index = activeQueue.indexOfFirst { it.path == path }
                     if (index !in activeQueue.indices) return
+                    val transitionedSong = activeQueue[index]
+                    PlaybackAnalyticsLogger.logTransition(
+                        reason = reason,
+                        fromSong = previousSong,
+                        toSong = transitionedSong,
+                        toIndex = index
+                    )
                     if (index != currentQueueIndexInternal) {
                         currentQueueIndexInternal = index
                         _currentQueueIndex.postValue(index)
-                        _currentSong.postValue(activeQueue[index])
+                        _currentSong.postValue(transitionedSong)
                         persistQueueState()
                     }
                     refreshPlaybackNotification()
+                }
+
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    PlaybackAnalyticsLogger.logPlaybackError(
+                        error = error,
+                        song = _currentSong.value,
+                        queueIndex = currentQueueIndexInternal,
+                        queueSize = activeQueue.size
+                    )
                 }
             })
         }
@@ -230,11 +247,21 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun playNext() {
+    fun playNext(source: String = "ui") {
+        val fromSong = _currentSong.value
+        val fromIndex = currentQueueIndexInternal
         val repeatMode = _repeatMode.value ?: 0
         val plan = PlaybackTransitionLogic.resolveManualNextRepeatPlan(repeatMode)
         playNextInternal(wrapAround = plan.wrapAround)
         _repeatMode.value = plan.nextRepeatMode
+        PlaybackAnalyticsLogger.logSkip(
+            action = "next",
+            source = source,
+            fromSong = fromSong,
+            toSong = _currentSong.value,
+            fromIndex = fromIndex,
+            toIndex = currentQueueIndexInternal
+        )
     }
 
     private fun playNextInternal(wrapAround: Boolean) {
@@ -253,8 +280,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun playPrevious() {
+    fun playPrevious(source: String = "ui") {
         if (activeQueue.isEmpty()) return
+        val fromSong = _currentSong.value
+        val fromIndex = currentQueueIndexInternal
         val currentPosition = exoPlayer?.currentPosition ?: 0L
         val canWrapToEnd = (_repeatMode.value ?: 0) == 1 // Repeat all only
         when (val action = PlaybackTransitionLogic.resolvePreviousAction(
@@ -273,6 +302,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 playSongAt(action.index)
             }
         }
+        PlaybackAnalyticsLogger.logSkip(
+            action = "previous",
+            source = source,
+            fromSong = fromSong,
+            toSong = _currentSong.value,
+            fromIndex = fromIndex,
+            toIndex = currentQueueIndexInternal
+        )
     }
 
     fun toggleShuffle() {
@@ -598,11 +635,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun handleNotificationAction(action: String) {
         when (action) {
-            PlaybackNotificationManager.ACTION_PREVIOUS -> playPrevious()
+            PlaybackNotificationManager.ACTION_PREVIOUS -> playPrevious(source = "notification")
             PlaybackNotificationManager.ACTION_PLAY_PAUSE -> {
                 if (_shouldRestartQueue.value == true) restartQueueFromBeginning() else playPause()
             }
-            PlaybackNotificationManager.ACTION_NEXT -> playNext()
+            PlaybackNotificationManager.ACTION_NEXT -> playNext(source = "notification")
             PlaybackNotificationManager.ACTION_SEEK_BACK -> seekBy(-10_000L)
             PlaybackNotificationManager.ACTION_SEEK_FORWARD -> seekBy(10_000L)
         }

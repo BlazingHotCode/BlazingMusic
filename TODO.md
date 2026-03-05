@@ -29,7 +29,7 @@
 27. [x] Replace deprecated adapterPosition usage in SongAdapter.
 28. [x] Add developer-facing code documentation for architecture, playback flow, and key components.
 29. [x] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
-30. [ ] Add analytics/logging hooks for playback errors and skips.
+30. [x] Add analytics/logging hooks for playback errors and skips.
 31. [ ] Add settings screen for default repeat/shuffle behavior and audio focus options.
 32. [ ] Add YouTube API integration to fetch/play songs from YouTube sources.
 33. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
