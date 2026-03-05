@@ -15,7 +15,7 @@
         android:layout_marginTop="18dp"
         android:background="@drawable/bg_icon_button"
         android:contentDescription="Back"
-        android:src="@drawable/ml_skip_previous"
+        android:src="@drawable/ml_arrow_back"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:tint="@color/text_primary" />

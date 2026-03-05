@@ -2,6 +2,7 @@ package com.blazinghotcode.blazingmusic
 
 import android.Manifest
 import android.content.ComponentName
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -48,6 +49,10 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 
 class MainActivity : AppCompatActivity() {
+    companion object {
+        private const val SORT_PREFS_NAME = "blazing_music_sort_prefs"
+        private const val KEY_HOME_SORT = "home_sort"
+    }
 
     private val viewModel: MusicViewModel by viewModels()
     private lateinit var songAdapter: SongAdapter
@@ -83,6 +88,9 @@ class MainActivity : AppCompatActivity() {
     private var isQueueDragInProgress = false
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var currentSongSort = SongSortOption.TITLE
+    private val sortPrefs by lazy {
+        getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
+    }
     private val handler = Handler(Looper.getMainLooper())
     private val updateSeekbarRunnable = object : Runnable {
         override fun run() {
@@ -151,6 +159,7 @@ class MainActivity : AppCompatActivity() {
         etSearch = findViewById(R.id.etSearch)
         btnSortSongs = findViewById(R.id.btnSortSongs)
         playlistContainer = findViewById(R.id.playlistContainer)
+        currentSongSort = loadHomeSort()
         tintSearchStartIcon()
         applySystemInsets()
     }
@@ -728,9 +737,19 @@ class MainActivity : AppCompatActivity() {
         ) { index ->
             val selected = options.getOrNull(index) ?: return@showSimpleBottomSheet
             currentSongSort = selected
+            persistHomeSort(selected)
             updateSortButtonLabel()
             applySongListPresentation(preserveScrollOffset = true)
         }
+    }
+
+    private fun persistHomeSort(option: SongSortOption) {
+        sortPrefs.edit().putString(KEY_HOME_SORT, option.name).apply()
+    }
+
+    private fun loadHomeSort(): SongSortOption {
+        val raw = sortPrefs.getString(KEY_HOME_SORT, SongSortOption.TITLE.name)
+        return SongSortOption.entries.firstOrNull { it.name == raw } ?: SongSortOption.TITLE
     }
 
     private fun updateSortButtonLabel() {

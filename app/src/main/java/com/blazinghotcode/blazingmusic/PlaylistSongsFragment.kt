@@ -1,5 +1,6 @@
 package com.blazinghotcode.blazingmusic
 
+import android.content.Context
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -27,6 +28,8 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     companion object {
         private const val ARG_PLAYLIST_ID = "arg_playlist_id"
         private const val ARG_PLAYLIST_NAME = "arg_playlist_name"
+        private const val SORT_PREFS_NAME = "blazing_music_sort_prefs"
+        private const val PLAYLIST_SORT_KEY_PREFIX = "playlist_sort_"
 
         fun newInstance(playlistId: Long, playlistName: String): PlaylistSongsFragment {
             return PlaylistSongsFragment().apply {
@@ -47,6 +50,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     private lateinit var etSearchSongs: EditText
     private lateinit var btnPlayAll: Button
     private lateinit var btnShuffleList: Button
+    private lateinit var btnSortList: Button
     private lateinit var rvSongs: RecyclerView
     private lateinit var btnBack: ImageButton
 
@@ -68,6 +72,10 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     private var playlistName: String = "Playlist"
     private var playlistSongs: List<Song> = emptyList()
     private var filteredSongs: List<Song> = emptyList()
+    private var currentSongSort = PlaylistSongSortOption.TITLE
+    private val sortPrefs by lazy {
+        requireContext().getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
     private var isCurrentlyPlaying = false
     private var shouldRestartQueue = false
@@ -76,6 +84,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         super.onViewCreated(view, savedInstanceState)
         playlistId = arguments?.getLong(ARG_PLAYLIST_ID, -1L) ?: -1L
         playlistName = arguments?.getString(ARG_PLAYLIST_NAME).orEmpty().ifBlank { "Playlist" }
+        currentSongSort = loadSortForCurrentPlaylist()
 
         initViews(view)
         setupRecyclerView()
@@ -90,6 +99,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         etSearchSongs = root.findViewById(R.id.etSearchSongs)
         btnPlayAll = root.findViewById(R.id.btnPlayAll)
         btnShuffleList = root.findViewById(R.id.btnShuffleList)
+        btnSortList = root.findViewById(R.id.btnSortList)
         rvSongs = root.findViewById(R.id.rvSongs)
         btnBack = root.findViewById(R.id.btnBack)
 
@@ -113,13 +123,20 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         tintSearchStartIcon()
         setupSearch()
         setupListActions()
+        updateSortButtonLabel()
     }
 
     private fun setupRecyclerView() {
         songAdapter = SongAdapter(
             onSongClick = { song ->
-                if (playlistSongs.isNotEmpty()) {
-                    viewModel.playSongFromQueue(song, playlistSongs)
+                val currentOrderedSongs = songAdapter.currentList.toList()
+                val queueSource = when {
+                    currentOrderedSongs.isNotEmpty() -> currentOrderedSongs
+                    filteredSongs.isNotEmpty() -> filteredSongs
+                    else -> playlistSongs
+                }
+                if (queueSource.isNotEmpty()) {
+                    viewModel.playSongFromQueue(song, queueSource)
                 }
             },
             onSongMenuClick = { song, anchor ->
@@ -262,16 +279,61 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
                 }
             } ?: showToast("No songs in playlist")
         }
+        btnSortList.setOnClickListener { showSortOptionsMenu() }
+    }
+
+    private fun showSortOptionsMenu() {
+        androidx.appcompat.widget.PopupMenu(
+            ContextThemeWrapper(requireContext(), R.style.ThemeOverlay_BlazingMusic_PopupMenu),
+            btnSortList
+        ).apply {
+            PlaylistSongSortOption.entries.forEachIndexed { index, option ->
+                menu.add(Menu.NONE, index + 1, Menu.NONE, option.label)
+            }
+            setOnMenuItemClickListener { item ->
+                val selected = PlaylistSongSortOption.entries.getOrNull(item.itemId - 1)
+                    ?: return@setOnMenuItemClickListener false
+                currentSongSort = selected
+                persistSortForCurrentPlaylist(selected)
+                updateSortButtonLabel()
+                applySongFilter(etSearchSongs.text?.toString().orEmpty())
+                true
+            }
+            show()
+        }
+    }
+
+    private fun updateSortButtonLabel() {
+        btnSortList.text = currentSongSort.label
     }
 
     private fun applySongFilter(query: String) {
         val normalized = query.trim().lowercase()
-        filteredSongs = if (normalized.isEmpty()) {
+        val base = if (normalized.isEmpty()) {
             playlistSongs
         } else {
             playlistSongs.filter {
-                it.title.lowercase().contains(normalized) || it.artist.lowercase().contains(normalized)
+                it.title.lowercase().contains(normalized) ||
+                    it.artist.lowercase().contains(normalized) ||
+                    it.album.lowercase().contains(normalized)
             }
+        }
+        filteredSongs = when (currentSongSort) {
+            PlaylistSongSortOption.TITLE -> base.sortedWith(
+                compareBy<Song> { it.title.lowercase() }.thenBy { it.artist.lowercase() }
+            )
+            PlaylistSongSortOption.ARTIST -> base.sortedWith(
+                compareBy<Song> { it.artist.lowercase() }.thenBy { it.title.lowercase() }
+            )
+            PlaylistSongSortOption.ALBUM -> base.sortedWith(
+                compareBy<Song> { it.album.lowercase() }.thenBy { it.title.lowercase() }
+            )
+            PlaylistSongSortOption.DURATION -> base.sortedWith(
+                compareByDescending<Song> { it.duration }.thenBy { it.title.lowercase() }
+            )
+            PlaylistSongSortOption.RECENTLY_ADDED -> base.sortedWith(
+                compareByDescending<Song> { it.dateAddedSeconds }.thenBy { it.title.lowercase() }
+            )
         }
         songAdapter.submitList(filteredSongs)
         tvEmpty.visibility = if (filteredSongs.isEmpty()) View.VISIBLE else View.GONE
@@ -330,5 +392,25 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
     private fun showToast(message: String) {
         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun playlistSortKey(): String = "$PLAYLIST_SORT_KEY_PREFIX$playlistId"
+
+    private fun persistSortForCurrentPlaylist(option: PlaylistSongSortOption) {
+        sortPrefs.edit().putString(playlistSortKey(), option.name).apply()
+    }
+
+    private fun loadSortForCurrentPlaylist(): PlaylistSongSortOption {
+        if (playlistId <= 0L) return PlaylistSongSortOption.TITLE
+        val raw = sortPrefs.getString(playlistSortKey(), PlaylistSongSortOption.TITLE.name)
+        return PlaylistSongSortOption.entries.firstOrNull { it.name == raw } ?: PlaylistSongSortOption.TITLE
+    }
+
+    private enum class PlaylistSongSortOption(val label: String) {
+        TITLE("Title"),
+        ARTIST("Artist"),
+        ALBUM("Album"),
+        DURATION("Duration"),
+        RECENTLY_ADDED("Recent")
     }
 }

@@ -16,7 +16,7 @@
         android:layout_marginTop="18dp"
         android:background="@drawable/bg_icon_button"
         android:contentDescription="Back"
-        android:src="@drawable/ml_skip_previous"
+        android:src="@drawable/ml_arrow_back"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:tint="@color/text_primary" />
@@ -92,18 +92,36 @@
         android:id="@+id/btnShuffleList"
         android:layout_width="wrap_content"
         android:layout_height="40dp"
-        android:minWidth="96dp"
+        android:minWidth="84dp"
         android:layout_marginStart="8dp"
         android:layout_marginTop="8dp"
         android:background="@drawable/bg_secondary_action_button"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
         android:text="Shuffle"
         android:textAllCaps="false"
         android:textColor="@color/text_primary"
         android:textSize="13sp"
         android:textStyle="bold"
         app:layout_constraintStart_toEndOf="@id/btnPlayAll"
+        app:layout_constraintTop_toBottomOf="@id/etSearchSongs" />
+
+    <Button
+        android:id="@+id/btnSortList"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:minWidth="76dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_secondary_action_button"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:text="Title"
+        android:textAllCaps="false"
+        android:textColor="@color/text_primary"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toEndOf="@id/btnShuffleList"
         app:layout_constraintTop_toBottomOf="@id/etSearchSongs" />
 
     <androidx.recyclerview.widget.RecyclerView
