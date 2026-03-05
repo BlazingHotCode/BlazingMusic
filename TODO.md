@@ -34,6 +34,22 @@
 32. [x] Add YouTube API integration to fetch/play songs from YouTube sources.
 33. [x] Replace YouTube Music handoff with Metrolist-style in-app YouTube audio playback (no external app handoff).
 34. [x] Add YouTube Mix/Radio support (start artist/album/song radio and play dynamic recommendations in-app).
-35. [ ] Refactor duplicated UI/playback code into modular shared components (reduce near-identical implementations like song entry rows across Home/Playlist and similar feature variants with only minor differences).
-36. [ ] Centralize YouTube search defaults (e.g., `songsOnly`) into one source of truth shared by Fragment, Activity, and XML.
-37. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
+35. [ ] Make Mix/Radio logic fully match Metrolist parity (endpoint selection, continuation handling, automix fallback behavior, candidate ranking/filtering, and queue stitching semantics) [NEXT]
+36. [ ] Refactor duplicated UI/playback code into modular shared components (reduce near-identical implementations like song entry rows across Home/Playlist and similar feature variants with only minor differences).
+37. [ ] Centralize YouTube search defaults (e.g., `songsOnly`) into one source of truth shared by Fragment, Activity, and XML.
+38. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
+39. [ ] Add live lyrics support with word-by-word highlighting (integrate with LRCLIB or similar lyrics provider)
+40. [ ] Add download and cache functionality for offline playback
+41. [ ] Add "Listen together" feature for real-time sync playback with friends
+42. [ ] Add "Skip silence" option in playback settings
+43. [ ] Add audio normalization toggle in settings
+44. [ ] Add tempo/pitch adjustment controls in player settings
+45. [ ] Add home screen widget with playback controls
+46. [ ] Add multiple theme options: Light, Dark, Black (OLED), and Dynamic color theme
+47. [ ] Add sleep timer with customizable duration
+48. [ ] Add Material 3 design throughout the UI
+49. [ ] Add Android Auto support
+50. [ ] Add playlist import from M3U/JSON files
+51. [ ] Add translations support via Weblate
+52. [ ] Add Discord Rich Presence (integrate Kizzy library)
+53. [ ] Add mini-player persistent bar in all screens with quick controls
