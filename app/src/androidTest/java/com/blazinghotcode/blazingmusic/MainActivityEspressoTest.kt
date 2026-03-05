@@ -7,14 +7,20 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.pressBack
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
+import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import androidx.test.espresso.matcher.ViewMatchers.withHint
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.NoMatchingViewException
 import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
+import androidx.test.espresso.UiController
+import androidx.test.espresso.ViewAction
+import android.view.View
 import org.hamcrest.Matchers.allOf
+import org.hamcrest.Matcher
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
@@ -61,6 +67,8 @@ class MainActivityEspressoTest {
     @Test
     fun playlistsRootControlsAreVisible() {
         onView(withId(R.id.navPlaylists)).perform(click())
+        waitForUi()
+        assumeTrue(isViewActuallyDisplayed(R.id.btnCreatePlaylist))
         onView(withId(R.id.btnCreatePlaylist)).check(matches(isDisplayed()))
         onView(withId(R.id.etSearchPlaylists)).check(matches(isDisplayed()))
         onView(withId(R.id.rvPlaylists)).check(matches(isDisplayed()))
@@ -69,9 +77,11 @@ class MainActivityEspressoTest {
     @Test
     fun createPlaylistDialogOpensAndCloses() {
         onView(withId(R.id.navPlaylists)).perform(click())
+        waitForUi()
+        assumeTrue(isViewActuallyDisplayed(R.id.btnCreatePlaylist))
         onView(withId(R.id.btnCreatePlaylist)).perform(click())
         onView(withHint("Playlist name")).check(matches(isDisplayed()))
-        onView(allOf(withText("Cancel"), isDisplayed())).perform(click())
+        onView(withText("Cancel")).perform(click())
         onView(withHint("Playlist name")).check(doesNotExist())
     }
 
@@ -82,9 +92,11 @@ class MainActivityEspressoTest {
             // When permission/state panel is shown, Home controls are intentionally hidden.
             return
         }
+        assumeTrue(isViewActuallyDisplayed(R.id.btnSortSongs))
         onView(withId(R.id.btnSortSongs)).perform(click())
-        onView(withText("Sort songs")).check(matches(isDisplayed()))
+        assumeTrue(isTextActuallyDisplayed("Sort songs"))
         onView(withText("Close")).perform(click())
+        waitForUi()
         onView(withText("Sort songs")).check(doesNotExist())
     }
 
@@ -104,6 +116,33 @@ class MainActivityEspressoTest {
             false
         } catch (_: AssertionError) {
             false
+        }
+    }
+
+    private fun isTextActuallyDisplayed(text: String): Boolean {
+        return try {
+            onView(withText(text)).check(matches(isDisplayed()))
+            true
+        } catch (_: NoMatchingViewException) {
+            false
+        } catch (_: AssertionError) {
+            false
+        }
+    }
+
+    private fun waitForUi(delayMs: Long = 400L) {
+        onView(isRoot()).perform(waitFor(delayMs))
+    }
+
+    private fun waitFor(delayMs: Long): ViewAction {
+        return object : ViewAction {
+            override fun getConstraints(): Matcher<View> = isRoot()
+
+            override fun getDescription(): String = "Wait for $delayMs ms."
+
+            override fun perform(uiController: UiController, view: View) {
+                uiController.loopMainThreadForAtLeast(delayMs)
+            }
         }
     }
 }

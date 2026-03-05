@@ -232,52 +232,47 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playNext() {
         val repeatMode = _repeatMode.value ?: 0
-        val shouldWrap = repeatMode == 1 || repeatMode == 2
-        playNextInternal(wrapAround = shouldWrap)
-        if (repeatMode == 2) {
-            _repeatMode.value = 0
-        }
+        val plan = PlaybackTransitionLogic.resolveManualNextRepeatPlan(repeatMode)
+        playNextInternal(wrapAround = plan.wrapAround)
+        _repeatMode.value = plan.nextRepeatMode
     }
 
     private fun playNextInternal(wrapAround: Boolean) {
-        if (activeQueue.isEmpty()) return
-        val nextIndex = if (currentQueueIndexInternal == -1) {
-            0
-        } else {
-            currentQueueIndexInternal + 1
-        }
-        if (nextIndex >= activeQueue.size) {
-            if (wrapAround) {
-                playSongAt(0)
-            } else {
+        when (val action = PlaybackTransitionLogic.resolveNextAction(
+            queueSize = activeQueue.size,
+            currentIndex = currentQueueIndexInternal,
+            wrapAround = wrapAround
+        )) {
+            null -> return
+            is PlaybackTransitionLogic.NextAction.PlayAt -> playSongAt(action.index)
+            PlaybackTransitionLogic.NextAction.StopAtQueueEnd -> {
                 exoPlayer?.pause()
                 _isPlaying.value = false
                 _shouldRestartQueue.value = true
             }
-            return
         }
-        playSongAt(nextIndex)
     }
 
     fun playPrevious() {
         if (activeQueue.isEmpty()) return
-        exoPlayer?.let { player ->
-            val isValidCurrent = currentQueueIndexInternal in activeQueue.indices
-            if (isValidCurrent && player.currentPosition > PREVIOUS_RESTART_THRESHOLD_MS) {
-                player.seekTo(0L)
+        val currentPosition = exoPlayer?.currentPosition ?: 0L
+        val canWrapToEnd = (_repeatMode.value ?: 0) == 1 // Repeat all only
+        when (val action = PlaybackTransitionLogic.resolvePreviousAction(
+            queueSize = activeQueue.size,
+            currentIndex = currentQueueIndexInternal,
+            canWrapToEnd = canWrapToEnd,
+            currentPositionMs = currentPosition,
+            restartThresholdMs = PREVIOUS_RESTART_THRESHOLD_MS
+        )) {
+            null -> return
+            PlaybackTransitionLogic.PreviousAction.RestartCurrent -> {
+                exoPlayer?.seekTo(0L)
                 persistQueueState(positionOverrideMs = 0L)
-                return
+            }
+            is PlaybackTransitionLogic.PreviousAction.PlayAt -> {
+                playSongAt(action.index)
             }
         }
-        val canWrapToEnd = (_repeatMode.value ?: 0) == 1 // Repeat all only
-        val previousIndex = if (currentQueueIndexInternal == -1) {
-            if (canWrapToEnd) activeQueue.lastIndex else 0
-        } else if (currentQueueIndexInternal > 0) {
-            currentQueueIndexInternal - 1
-        } else {
-            if (canWrapToEnd) activeQueue.lastIndex else 0
-        }
-        playSongAt(previousIndex)
     }
 
     fun toggleShuffle() {
@@ -298,7 +293,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleRepeat() {
         val current = _repeatMode.value ?: 0
-        val nextMode = (current + 1) % 3
+        val nextMode = PlaybackTransitionLogic.nextRepeatMode(current)
         _repeatMode.value = nextMode
         exoPlayer?.repeatMode = Player.REPEAT_MODE_OFF
     }
@@ -527,13 +522,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun buildShuffledUpcomingQueue(queue: List<Song>, currentIndex: Int): List<Song> {
-        if (queue.isEmpty()) return queue
-        if (currentIndex !in queue.indices) return queue.shuffled()
-
-        val playedAndCurrent = queue.subList(0, currentIndex + 1)
-        val upcoming = queue.subList(currentIndex + 1, queue.size)
-        if (upcoming.size <= 1) return queue
-        return playedAndCurrent + upcoming.shuffled()
+        return PlaybackTransitionLogic.buildShuffledUpcomingQueue(queue, currentIndex)
     }
 
     private fun handleTrackEnded() {
