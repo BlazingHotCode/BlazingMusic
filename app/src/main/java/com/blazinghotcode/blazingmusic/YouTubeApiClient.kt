@@ -1,103 +1,100 @@
 package com.blazinghotcode.blazingmusic
 
+import android.util.Log
 import androidx.core.text.HtmlCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 
 /**
- * Minimal YouTube Data API v3 client for searching music videos.
+ * YouTube Music InnerTube search client (Metrolist-style WEB_REMIX search).
  */
 class YouTubeApiClient(
-    private val apiKey: String
+    private val apiKey: String = ""
 ) {
     suspend fun searchMusicVideos(
         query: String,
         maxResults: Int = 20,
         songsOnly: Boolean = true
     ): List<YouTubeVideo> {
-        if (apiKey.isBlank()) return emptyList()
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
 
         return withContext(Dispatchers.IO) {
-            val queryText = if (songsOnly) "$trimmed official audio" else trimmed
-            val encodedQuery = URLEncoder.encode(queryText, "UTF-8")
-            val requested = if (songsOnly) (maxResults * 3).coerceIn(1, 50) else maxResults.coerceIn(1, 50)
-            val categoryParam = if (songsOnly) "&videoCategoryId=10" else ""
-            val musicTopicParam = if (songsOnly) "&topicId=%2Fm%2F04rlf" else ""
-            val url = URL(
-                "https://www.googleapis.com/youtube/v3/search" +
-                    "?part=snippet" +
-                    "&type=video" +
-                    categoryParam +
-                    musicTopicParam +
-                    "&maxResults=$requested" +
-                    "&q=$encodedQuery" +
-                    "&key=$apiKey"
-            )
+            val url = URL("https://music.youtube.com/youtubei/v1/search?prettyPrint=false")
+            val requestBody = buildSearchBody(query = trimmed, songsOnly = songsOnly)
             val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
+                requestMethod = "POST"
+                doOutput = true
                 connectTimeout = 10_000
                 readTimeout = 10_000
+                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Origin", "https://music.youtube.com")
+                setRequestProperty("Referer", "https://music.youtube.com/")
+                setRequestProperty("User-Agent", USER_AGENT_WEB)
+                setRequestProperty("X-YouTube-Client-Name", WEB_REMIX_CLIENT_ID)
+                setRequestProperty("X-YouTube-Client-Version", WEB_REMIX_CLIENT_VERSION)
             }
             try {
+                connection.outputStream.bufferedWriter(Charsets.UTF_8).use { writer ->
+                    writer.write(requestBody)
+                }
                 val stream = if (connection.responseCode in 200..299) {
                     connection.inputStream
                 } else {
+                    Log.w(TAG, "InnerTube search failed code=${connection.responseCode}")
                     connection.errorStream ?: return@withContext emptyList()
                 }
                 val payload = stream.bufferedReader().use { it.readText() }
-                val parsed = parseSearchResults(payload)
-                if (!songsOnly) {
-                    parsed.take(maxResults.coerceIn(1, 50))
-                } else {
-                    val scored = parsed
-                        .map { it to songLikelihoodScore(it) }
-                        .filter { (_, score) -> score > 0 }
-                        .sortedByDescending { (_, score) -> score }
-                        .map { (video, _) -> video }
-
-                    if (scored.isNotEmpty()) {
-                        scored.take(maxResults.coerceIn(1, 50))
-                    } else {
-                        // Soft fallback: if strict song scoring finds nothing, still prefer release-like sources.
-                        parsed
-                            .sortedByDescending { songLikelihoodScore(it) }
-                            .take(maxResults.coerceIn(1, 50))
-                    }
-                }
+                parseSearchResults(payload).take(maxResults.coerceIn(1, 50))
             } finally {
                 connection.disconnect()
             }
         }
     }
 
+    private fun buildSearchBody(query: String, songsOnly: Boolean): String {
+        val body = JSONObject()
+        val context = JSONObject()
+        val client = JSONObject()
+            .put("clientName", WEB_REMIX_CLIENT_NAME)
+            .put("clientVersion", WEB_REMIX_CLIENT_VERSION)
+            .put("hl", "en")
+            .put("gl", "US")
+        context.put("client", client)
+        body.put("context", context)
+        body.put("query", query)
+        if (songsOnly) {
+            body.put("params", FILTER_SONG)
+        }
+        return body.toString()
+    }
+
     private fun parseSearchResults(jsonText: String): List<YouTubeVideo> {
         val root = JSONObject(jsonText)
-        val items = root.optJSONArray("items") ?: return emptyList()
+        val renderers = mutableListOf<JSONObject>()
+        collectMusicResponsiveRenderers(root, renderers)
+        if (renderers.isEmpty()) return emptyList()
+
         val videos = mutableListOf<YouTubeVideo>()
-        for (index in 0 until items.length()) {
-            val item = items.optJSONObject(index) ?: continue
-            val idObject = item.optJSONObject("id") ?: continue
-            val videoId = idObject.optString("videoId", "").trim()
+        val seenIds = HashSet<String>()
+        for (renderer in renderers) {
+            val videoId = extractVideoId(renderer)
             if (videoId.isEmpty()) continue
-            val snippet = item.optJSONObject("snippet") ?: continue
-            val title = decodeHtmlEntities(snippet.optString("title", "Untitled"))
-            val channelTitle = decodeHtmlEntities(snippet.optString("channelTitle", "Unknown channel"))
-            val thumbnails = snippet.optJSONObject("thumbnails")
-            val thumbnailUrl =
-                thumbnails?.optJSONObject("high")?.optString("url")
-                    ?: thumbnails?.optJSONObject("medium")?.optString("url")
-                    ?: thumbnails?.optJSONObject("default")?.optString("url")
+            if (!seenIds.add(videoId)) continue
+
+            val title = extractTitle(renderer).ifBlank { "Untitled" }
+            val channelTitle = extractArtistOrChannel(renderer).ifBlank { "Unknown channel" }
+            val thumbnailUrl = extractThumbnail(renderer)
             videos.add(
                 YouTubeVideo(
                     id = videoId,
-                    title = title,
-                    channelTitle = channelTitle,
+                    title = decodeHtmlEntities(title),
+                    channelTitle = decodeHtmlEntities(channelTitle),
                     thumbnailUrl = thumbnailUrl
                 )
             )
@@ -105,42 +102,136 @@ class YouTubeApiClient(
         return videos
     }
 
-    private fun songLikelihoodScore(video: YouTubeVideo): Int {
-        val channel = video.channelTitle.lowercase()
-        val title = video.title.lowercase()
-        var score = 0
+    private fun collectMusicResponsiveRenderers(node: Any?, out: MutableList<JSONObject>) {
+        when (node) {
+            is JSONObject -> {
+                node.optJSONObject("musicResponsiveListItemRenderer")?.let(out::add)
+                val iterator = node.keys()
+                while (iterator.hasNext()) {
+                    val key = iterator.next()
+                    collectMusicResponsiveRenderers(node.opt(key), out)
+                }
+            }
+            is JSONArray -> {
+                for (index in 0 until node.length()) {
+                    collectMusicResponsiveRenderers(node.opt(index), out)
+                }
+            }
+        }
+    }
 
-        // Positive release/audio signals.
-        if (channel.endsWith(" - topic")) score += 120
-        if (channel.contains("release")) score += 80
-        if (title.contains("provided to youtube by")) score += 70
-        if (title.contains("official audio")) score += 60
-        if (title.contains("audio")) score += 15
-        if (title.contains("single version")) score += 25
+    private fun extractVideoId(renderer: JSONObject): String {
+        val playlistItemData = renderer.optJSONObject("playlistItemData")
+        val playlistVideoId = playlistItemData?.optString("videoId", "").orEmpty().trim()
+        if (playlistVideoId.isNotEmpty()) return playlistVideoId
 
-        // Strong negative signals for non-song uploads.
-        if (title.contains("reaction")) score -= 120
-        if (title.contains("tutorial")) score -= 120
-        if (title.contains("interview")) score -= 120
-        if (title.contains("podcast")) score -= 100
-        if (title.contains("vlog")) score -= 100
-        if (title.contains("teaser")) score -= 90
-        if (title.contains("trailer")) score -= 90
-        if (title.contains("live")) score -= 80
-        if (title.contains("concert")) score -= 80
-        if (title.contains("cover")) score -= 70
-        if (title.contains("karaoke")) score -= 70
-        if (title.contains("music video")) score -= 55
-        if (title.contains("official video")) score -= 55
-        if (title.contains("lyric video")) score -= 45
-        if (title.contains("shorts")) score -= 45
-        if (title.contains("mix")) score -= 30
+        val overlayVideoId = renderer
+            .optJSONObject("overlay")
+            ?.optJSONObject("musicItemThumbnailOverlayRenderer")
+            ?.optJSONObject("content")
+            ?.optJSONObject("musicPlayButtonRenderer")
+            ?.optJSONObject("playNavigationEndpoint")
+            ?.optJSONObject("watchEndpoint")
+            ?.optString("videoId", "")
+            .orEmpty()
+            .trim()
+        if (overlayVideoId.isNotEmpty()) return overlayVideoId
 
-        return score
+        return renderer
+            .optJSONObject("navigationEndpoint")
+            ?.optJSONObject("watchEndpoint")
+            ?.optString("videoId", "")
+            .orEmpty()
+            .trim()
+    }
+
+    private fun extractTitle(renderer: JSONObject): String {
+        return renderer
+            .optJSONArray("flexColumns")
+            ?.optJSONObject(0)
+            ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
+            ?.optJSONObject("text")
+            ?.optJSONArray("runs")
+            ?.let(::joinRunsText)
+            .orEmpty()
+    }
+
+    private fun extractArtistOrChannel(renderer: JSONObject): String {
+        val secondRuns = renderer
+            .optJSONArray("flexColumns")
+            ?.optJSONObject(1)
+            ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
+            ?.optJSONObject("text")
+            ?.optJSONArray("runs")
+            ?: return ""
+
+        // Prefer explicit artist page links, matching YT Music shelf semantics.
+        for (i in 0 until secondRuns.length()) {
+            val run = secondRuns.optJSONObject(i) ?: continue
+            val text = run.optString("text", "").trim()
+            if (text.isEmpty() || isSeparator(text) || looksLikeDuration(text)) continue
+            val pageType = run
+                .optJSONObject("navigationEndpoint")
+                ?.optJSONObject("browseEndpoint")
+                ?.optJSONObject("browseEndpointContextSupportedConfigs")
+                ?.optJSONObject("browseEndpointContextMusicConfig")
+                ?.optString("pageType", "")
+                .orEmpty()
+            if (pageType == "MUSIC_PAGE_TYPE_ARTIST" || pageType == "MUSIC_PAGE_TYPE_USER_CHANNEL") {
+                return text
+            }
+        }
+
+        for (i in 0 until secondRuns.length()) {
+            val text = secondRuns.optJSONObject(i)?.optString("text", "").orEmpty().trim()
+            if (text.isNotEmpty() && !isSeparator(text) && !looksLikeDuration(text)) return text
+        }
+        return ""
+    }
+
+    private fun extractThumbnail(renderer: JSONObject): String? {
+        val thumbs = renderer
+            .optJSONObject("thumbnail")
+            ?.optJSONObject("musicThumbnailRenderer")
+            ?.optJSONObject("thumbnail")
+            ?.optJSONArray("thumbnails")
+            ?: return null
+        for (i in thumbs.length() - 1 downTo 0) {
+            val url = thumbs.optJSONObject(i)?.optString("url", "").orEmpty().trim()
+            if (url.isNotEmpty()) return url
+        }
+        return null
+    }
+
+    private fun joinRunsText(runs: JSONArray): String {
+        val sb = StringBuilder()
+        for (i in 0 until runs.length()) {
+            val part = runs.optJSONObject(i)?.optString("text", "").orEmpty()
+            sb.append(part)
+        }
+        return sb.toString().trim()
+    }
+
+    private fun isSeparator(value: String): Boolean {
+        return value == "•" || value == "·" || value == "|" || value == "-" || value == "• " || value == " · "
+    }
+
+    private fun looksLikeDuration(value: String): Boolean {
+        return value.matches(Regex("^\\d{1,2}:\\d{2}(:\\d{2})?$"))
     }
 
     private fun decodeHtmlEntities(raw: String): String {
         if (raw.isBlank()) return raw
         return HtmlCompat.fromHtml(raw, HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
+    }
+
+    private companion object {
+        const val TAG = "YouTubeApiClient"
+        const val WEB_REMIX_CLIENT_ID = "67"
+        const val WEB_REMIX_CLIENT_NAME = "WEB_REMIX"
+        const val WEB_REMIX_CLIENT_VERSION = "1.20260213.01.00"
+        const val FILTER_SONG = "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D"
+        const val USER_AGENT_WEB =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
     }
 }

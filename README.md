@@ -17,7 +17,7 @@ BlazingMusic is a local Android music player built with Kotlin and Media3 (ExoPl
 - Playback restore on relaunch (queue/index/position)
 - Empty/loading/error permission states for library UI
 - Playback analytics/logging hooks for errors, skips, and transitions
-- YouTube source integration (search via YouTube Data API + YouTube Music handoff, no video playback)
+- YouTube source integration (search via YouTube Music/InnerTube + YouTube Music handoff, no video playback)
 
 ## Developer Documentation
 
@@ -46,11 +46,6 @@ Debug APK output:
 
 - `app/build/outputs/apk/debug/app-debug.apk`
 
-YouTube API key setup (for YouTube source search):
-
-- Add to your Gradle properties (`~/.gradle/gradle.properties` or project `gradle.properties`):
-  - `YOUTUBE_API_KEY=your_api_key_here`
-
 ## Test
 
 ```bash
@@ -70,7 +65,7 @@ YouTube API key setup (for YouTube source search):
 ## YouTube Sources
 
 - Tap the YouTube button on Home header to open YouTube source search.
-- Search uses YouTube Data API v3 (music category results).
+- Search uses YouTube Music InnerTube (WEB_REMIX), including songs-only filtering.
 - Tapping a result opens YouTube Music app.
 - This integration intentionally does not support in-app or browser video playback.
 

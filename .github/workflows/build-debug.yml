@@ -26,17 +26,6 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Inject YouTube API key for Gradle
-        env:
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        run: |
-          if [ -n "${YOUTUBE_API_KEY}" ]; then
-            mkdir -p ~/.gradle
-            {
-              echo "YOUTUBE_API_KEY=${YOUTUBE_API_KEY}"
-            } >> ~/.gradle/gradle.properties
-          fi
-
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug
 

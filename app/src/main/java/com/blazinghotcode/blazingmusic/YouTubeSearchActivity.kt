@@ -16,7 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
- * Search YouTube music videos using YouTube Data API and hand off to YouTube Music.
+ * Search YouTube Music sources (InnerTube) and hand off to YouTube Music app.
  * This activity intentionally does not support in-app or browser video playback.
  */
 class YouTubeSearchActivity : AppCompatActivity() {
@@ -28,7 +28,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
     private lateinit var tvState: TextView
     private lateinit var adapter: YouTubeSearchAdapter
 
-    private val apiClient by lazy { YouTubeApiClient(BuildConfig.YOUTUBE_API_KEY) }
+    private val apiClient by lazy { YouTubeApiClient() }
     private var activeSearchJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,11 +38,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
         bindViews()
         setupList()
         setupActions()
-        if (BuildConfig.YOUTUBE_API_KEY.isBlank()) {
-            showState("Set YOUTUBE_API_KEY in Gradle properties to use YouTube search.")
-        } else {
-            showState("Search YouTube music videos.")
-        }
+        showState("Search YouTube music sources.")
     }
 
     private fun bindViews() {
@@ -81,11 +77,6 @@ class YouTubeSearchActivity : AppCompatActivity() {
             showState("Type a song/artist to search.")
             return
         }
-        if (BuildConfig.YOUTUBE_API_KEY.isBlank()) {
-            showState("Missing API key. Add YOUTUBE_API_KEY to Gradle properties.")
-            return
-        }
-
         activeSearchJob?.cancel()
         activeSearchJob = lifecycleScope.launch {
             showState("Searching...")
