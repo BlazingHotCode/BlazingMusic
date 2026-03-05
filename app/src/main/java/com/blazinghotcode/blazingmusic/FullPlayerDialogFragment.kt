@@ -96,6 +96,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         btnClose = root.findViewById(R.id.btnClose)
         ivAlbumArt = root.findViewById(R.id.ivAlbumArt)
         tvSongTitle = root.findViewById(R.id.tvSongTitle)
+        tvSongTitle.isSelected = true
         tvArtist = root.findViewById(R.id.tvArtist)
         seekBar = root.findViewById(R.id.seekBar)
         tvCurrentTime = root.findViewById(R.id.tvCurrentTime)
@@ -306,6 +307,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
                 return@observe
             }
             tvSongTitle.text = song.title
+            tvSongTitle.isSelected = true
             tvArtist.text = song.artist
             song.albumArtUri?.let { uri ->
                 ivAlbumArt.load(uri) {
