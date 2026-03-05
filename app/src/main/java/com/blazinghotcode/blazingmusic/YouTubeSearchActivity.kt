@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -22,6 +23,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
     private lateinit var btnBack: ImageButton
     private lateinit var etQuery: EditText
     private lateinit var btnSearch: ImageButton
+    private lateinit var switchSongsOnly: Switch
     private lateinit var rvResults: RecyclerView
     private lateinit var tvState: TextView
     private lateinit var adapter: YouTubeSearchAdapter
@@ -47,6 +49,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
         btnBack = findViewById(R.id.btnBack)
         etQuery = findViewById(R.id.etYouTubeSearch)
         btnSearch = findViewById(R.id.btnRunYouTubeSearch)
+        switchSongsOnly = findViewById(R.id.switchSongsOnly)
         rvResults = findViewById(R.id.rvYouTubeResults)
         tvState = findViewById(R.id.tvYouTubeState)
     }
@@ -62,6 +65,10 @@ class YouTubeSearchActivity : AppCompatActivity() {
     private fun setupActions() {
         btnBack.setOnClickListener { finish() }
         btnSearch.setOnClickListener { runSearch() }
+        switchSongsOnly.setOnCheckedChangeListener { _, _ ->
+            val mode = if (switchSongsOnly.isChecked) "Songs-only filter enabled." else "Showing broader video results."
+            showState(mode)
+        }
         etQuery.setOnEditorActionListener { _, _, _ ->
             runSearch()
             true
@@ -82,8 +89,9 @@ class YouTubeSearchActivity : AppCompatActivity() {
         activeSearchJob?.cancel()
         activeSearchJob = lifecycleScope.launch {
             showState("Searching...")
+            val songsOnly = switchSongsOnly.isChecked
             val results = runCatching {
-                apiClient.searchMusicVideos(query)
+                apiClient.searchMusicVideos(query, songsOnly = songsOnly)
             }.getOrElse {
                 emptyList()
             }

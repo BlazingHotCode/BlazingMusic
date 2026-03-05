@@ -1,5 +1,6 @@
 package com.blazinghotcode.blazingmusic
 
+import androidx.core.text.HtmlCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -13,19 +14,28 @@ import java.net.URLEncoder
 class YouTubeApiClient(
     private val apiKey: String
 ) {
-    suspend fun searchMusicVideos(query: String, maxResults: Int = 20): List<YouTubeVideo> {
+    suspend fun searchMusicVideos(
+        query: String,
+        maxResults: Int = 20,
+        songsOnly: Boolean = true
+    ): List<YouTubeVideo> {
         if (apiKey.isBlank()) return emptyList()
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
 
         return withContext(Dispatchers.IO) {
-            val encodedQuery = URLEncoder.encode(trimmed, "UTF-8")
+            val queryText = if (songsOnly) "$trimmed official audio" else trimmed
+            val encodedQuery = URLEncoder.encode(queryText, "UTF-8")
+            val requested = if (songsOnly) (maxResults * 3).coerceIn(1, 50) else maxResults.coerceIn(1, 50)
+            val categoryParam = if (songsOnly) "&videoCategoryId=10" else ""
+            val musicTopicParam = if (songsOnly) "&topicId=%2Fm%2F04rlf" else ""
             val url = URL(
                 "https://www.googleapis.com/youtube/v3/search" +
                     "?part=snippet" +
                     "&type=video" +
-                    "&videoCategoryId=10" +
-                    "&maxResults=${maxResults.coerceIn(1, 50)}" +
+                    categoryParam +
+                    musicTopicParam +
+                    "&maxResults=$requested" +
                     "&q=$encodedQuery" +
                     "&key=$apiKey"
             )
@@ -41,7 +51,14 @@ class YouTubeApiClient(
                     connection.errorStream ?: return@withContext emptyList()
                 }
                 val payload = stream.bufferedReader().use { it.readText() }
-                parseSearchResults(payload)
+                val parsed = parseSearchResults(payload)
+                if (!songsOnly) {
+                    parsed.take(maxResults.coerceIn(1, 50))
+                } else {
+                    parsed
+                        .sortedByDescending { if (isLikelyReleaseSource(it)) 1 else 0 }
+                        .take(maxResults.coerceIn(1, 50))
+                }
             } finally {
                 connection.disconnect()
             }
@@ -58,8 +75,8 @@ class YouTubeApiClient(
             val videoId = idObject.optString("videoId", "").trim()
             if (videoId.isEmpty()) continue
             val snippet = item.optJSONObject("snippet") ?: continue
-            val title = snippet.optString("title", "Untitled")
-            val channelTitle = snippet.optString("channelTitle", "Unknown channel")
+            val title = decodeHtmlEntities(snippet.optString("title", "Untitled"))
+            val channelTitle = decodeHtmlEntities(snippet.optString("channelTitle", "Unknown channel"))
             val thumbnails = snippet.optJSONObject("thumbnails")
             val thumbnailUrl =
                 thumbnails?.optJSONObject("high")?.optString("url")
@@ -76,5 +93,18 @@ class YouTubeApiClient(
         }
         return videos
     }
-}
 
+    private fun isLikelyReleaseSource(video: YouTubeVideo): Boolean {
+        val channel = video.channelTitle.lowercase()
+        val title = video.title.lowercase()
+        return channel.endsWith(" - topic") ||
+            channel.contains("release") ||
+            title.contains("official audio") ||
+            title.contains("provided to youtube by")
+    }
+
+    private fun decodeHtmlEntities(raw: String): String {
+        if (raw.isBlank()) return raw
+        return HtmlCompat.fromHtml(raw, HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
+    }
+}
