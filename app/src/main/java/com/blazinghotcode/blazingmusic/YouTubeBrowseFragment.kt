@@ -269,8 +269,6 @@ class YouTubeBrowseFragment : Fragment() {
                 }
                     .getOrDefault(emptyList())
                     .asSequence()
-                    .filter(::isArtistShuffleSongCandidate)
-                    .filter { it.videoId != seed.videoId }
                     .distinctBy { it.videoId ?: it.id }
                     .toList()
 
@@ -282,15 +280,18 @@ class YouTubeBrowseFragment : Fragment() {
                 var loaded = 0
                 var added = 0
                 val total = candidates.size
+                val resolved = mutableListOf<Song>()
                 candidates.forEach { candidate ->
                     loaded += 1
                     val playable = resolvePlayableSong(candidate)
                     if (playable != null) {
                         added += 1
-                        (activity as? MainActivity)?.appendSongsToCurrentQueue(listOf(playable))
+                        resolved += playable
                     }
                     showState("Building radio $loaded/$total...")
                 }
+
+                (activity as? MainActivity)?.replaceUpcomingQueue(resolved)
                 showState("Radio ready. Added $added recommendations.")
             }
         }

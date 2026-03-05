@@ -34,7 +34,7 @@
 32. [x] Add YouTube API integration to fetch/play songs from YouTube sources.
 33. [x] Replace YouTube Music handoff with Metrolist-style in-app YouTube audio playback (no external app handoff).
 34. [x] Add YouTube Mix/Radio support (start artist/album/song radio and play dynamic recommendations in-app).
-35. [ ] Make Mix/Radio logic fully match Metrolist parity (endpoint selection, continuation handling, automix fallback behavior, candidate ranking/filtering, and queue stitching semantics) [NEXT]
+35. [x] Make Mix/Radio logic fully match Metrolist parity (endpoint selection, continuation handling, automix fallback behavior, candidate ranking/filtering, and queue stitching semantics)
 36. [ ] Refactor duplicated UI/playback code into modular shared components (reduce near-identical implementations like song entry rows across Home/Playlist and similar feature variants with only minor differences).
 37. [ ] Centralize YouTube search defaults (e.g., `songsOnly`) into one source of truth shared by Fragment, Activity, and XML.
 38. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.

@@ -549,7 +549,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val currentIndex = currentQueueIndexInternal
         if (currentIndex !in activeQueue.indices) return
         val prefix = activeQueue.take(currentIndex + 1)
-        val updatedQueue = (prefix + newUpcoming).distinctBy { it.path }
+        val updatedQueue = (prefix + newUpcoming).distinctBy { song ->
+            song.sourceVideoId?.takeIf { it.isNotBlank() } ?: song.path
+        }
         applyQueueMutation(updatedQueue.toMutableList(), currentIndex)
     }
 

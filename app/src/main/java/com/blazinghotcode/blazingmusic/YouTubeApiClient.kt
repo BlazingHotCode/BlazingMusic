@@ -128,19 +128,140 @@ class YouTubeApiClient {
         maxResults: Int = 60
     ): List<YouTubeVideo> {
         if (videoId.isBlank()) return emptyList()
-        return fetchRadioCandidatesInternal(
-            endpoint = RadioWatchEndpoint(
-                videoId = videoId,
-                playlistId = playlistId,
-                playlistSetVideoId = playlistSetVideoId,
-                params = params,
-                index = index
-            ),
-            fallbackQuery = fallbackQuery,
-            maxResults = maxResults,
-            depth = 0,
-            visited = linkedSetOf()
+        val cappedResults = maxResults.coerceIn(1, 300)
+        val baseEndpoint = RadioWatchEndpoint(
+            videoId = videoId,
+            playlistId = playlistId,
+            playlistSetVideoId = playlistSetVideoId,
+            params = params,
+            index = index
         )
+
+        val collected = mutableListOf<YouTubeVideo>()
+        val seen = hashSetOf<String>()
+        val endpointVariants = buildRadioEndpointCandidates(baseEndpoint)
+        for (endpointVariant in endpointVariants) {
+            val raw = fetchRadioCandidatesInternal(
+                endpoint = endpointVariant,
+                fallbackQuery = fallbackQuery,
+                maxResults = cappedResults,
+                depth = 0,
+                visited = linkedSetOf()
+            )
+            raw.forEach { candidate ->
+                val key = candidate.videoId ?: candidate.id
+                if (seen.add(key)) collected += candidate
+            }
+            if (collected.size >= cappedResults) break
+        }
+
+        return normalizeRadioCandidates(
+            candidates = collected,
+            seedVideoId = videoId,
+            fallbackQuery = fallbackQuery,
+            maxResults = cappedResults
+        )
+    }
+
+    private fun buildRadioEndpointCandidates(base: RadioWatchEndpoint): List<RadioWatchEndpoint> {
+        val variants = linkedSetOf<RadioWatchEndpoint>()
+        variants += base
+
+        if (!base.playlistId.isNullOrBlank()) {
+            variants += base.copy(index = null)
+        }
+
+        if (base.videoId.isNotBlank()) {
+            variants += RadioWatchEndpoint(videoId = base.videoId)
+            variants += RadioWatchEndpoint(
+                videoId = base.videoId,
+                playlistId = "RDAMVM${base.videoId}"
+            )
+        }
+
+        return variants.toList()
+    }
+
+    private fun normalizeRadioCandidates(
+        candidates: List<YouTubeVideo>,
+        seedVideoId: String,
+        fallbackQuery: String?,
+        maxResults: Int
+    ): List<YouTubeVideo> {
+        if (candidates.isEmpty()) return emptyList()
+        val capped = maxResults.coerceIn(1, 300)
+        val seedTokens = fallbackQuery
+            .orEmpty()
+            .lowercase()
+            .split(Regex("[^a-z0-9]+"))
+            .filter { it.length >= 2 }
+            .toSet()
+
+        val deduped = linkedMapOf<String, Pair<YouTubeVideo, Int>>()
+        candidates.forEach { item ->
+            val videoId = item.videoId ?: return@forEach
+            if (videoId == seedVideoId) return@forEach
+            val text = "${item.title} ${item.channelTitle}".lowercase()
+            if (RADIO_BLOCKED_HINTS.any { hint -> text.contains(hint) }) return@forEach
+
+            val score = scoreRadioCandidate(item, text, seedTokens)
+            if (score < -40) return@forEach
+            val current = deduped[videoId]
+            if (current == null || score > current.second) {
+                deduped[videoId] = item to score
+            }
+        }
+
+        if (deduped.isEmpty()) {
+            return candidates
+                .asSequence()
+                .filter { !it.videoId.isNullOrBlank() }
+                .filter { it.videoId != seedVideoId }
+                .distinctBy { it.videoId ?: it.id }
+                .take(capped)
+                .toList()
+        }
+
+        val orderLookup = candidates.mapIndexed { index, candidate ->
+            (candidate.videoId ?: candidate.id) to index
+        }.toMap()
+
+        return deduped
+            .values
+            .sortedWith(
+                compareByDescending<Pair<YouTubeVideo, Int>> { it.second }
+                    .thenBy { pair -> orderLookup[pair.first.videoId ?: pair.first.id] ?: Int.MAX_VALUE }
+            )
+            .map { it.first }
+            .take(capped)
+    }
+
+    private fun scoreRadioCandidate(
+        item: YouTubeVideo,
+        lowerText: String,
+        seedTokens: Set<String>
+    ): Int {
+        var score = 0
+        score += when (item.type) {
+            YouTubeItemType.SONG -> 140
+            YouTubeItemType.UNKNOWN -> 40
+            YouTubeItemType.VIDEO -> -120
+            else -> -80
+        }
+
+        val section = item.sectionTitle.orEmpty().lowercase()
+        if (section.contains("radio") || section.contains("mix") || section.contains("up next")) {
+            score += 45
+        }
+        if (section.contains("video")) score -= 60
+        if (item.sourcePlaylistId?.startsWith("RD") == true) score += 15
+
+        if (seedTokens.isNotEmpty()) {
+            val matches = seedTokens.count { token -> lowerText.contains(token) }
+            score += (matches.coerceAtMost(4) * 8)
+        }
+
+        return score
     }
 
     private suspend fun fetchRadioCandidatesInternal(
@@ -162,6 +283,8 @@ class YouTubeApiClient {
 
         val cappedResults = maxResults.coerceIn(1, 300)
         val collected = mutableListOf<YouTubeVideo>()
+        val seen = hashSetOf<String>()
+        val visitedContinuations = hashSetOf<String>()
         var continuation: String? = null
         var lastRoot: JSONObject? = null
         var page = 0
@@ -175,30 +298,34 @@ class YouTubeApiClient {
 
             pageItems.forEach { candidate ->
                 val key = candidate.videoId ?: candidate.id
-                if (collected.none { (it.videoId ?: it.id) == key }) {
+                if (seen.add(key)) {
                     collected += candidate
                 }
             }
             if (collected.size >= cappedResults) break
 
             continuation = extractPlaylistPanelContinuation(root)
-            if (continuation.isNullOrBlank()) break
+                ?.takeIf { visitedContinuations.add(it) }
+                ?: break
+        }
+
+        val automixEndpoint = lastRoot?.let(::extractAutomixWatchEndpoint)
+        if (automixEndpoint != null && collected.size < cappedResults) {
+            val automix = fetchRadioCandidatesInternal(
+                endpoint = automixEndpoint,
+                fallbackQuery = fallbackQuery,
+                maxResults = cappedResults - collected.size,
+                depth = depth + 1,
+                visited = visited
+            )
+            automix.forEach { candidate ->
+                val key = candidate.videoId ?: candidate.id
+                if (seen.add(key)) collected += candidate
+            }
         }
 
         if (collected.isNotEmpty()) {
             return collected.take(cappedResults)
-        }
-
-        val automixEndpoint = lastRoot?.let(::extractAutomixWatchEndpoint)
-        if (automixEndpoint != null) {
-            val automix = fetchRadioCandidatesInternal(
-                endpoint = automixEndpoint,
-                fallbackQuery = fallbackQuery,
-                maxResults = maxResults,
-                depth = depth + 1,
-                visited = visited
-            )
-            if (automix.isNotEmpty()) return automix
         }
 
         val query = fallbackQuery?.trim().orEmpty()
@@ -217,12 +344,14 @@ class YouTubeApiClient {
             .put("context", contextObject())
             .put("isAudioOnly", true)
             .apply {
-                endpoint.videoId.takeIf { it.isNotBlank() }?.let { put("videoId", it) }
-                endpoint.playlistId?.takeIf { it.isNotBlank() }?.let { put("playlistId", it) }
-                endpoint.playlistSetVideoId?.takeIf { it.isNotBlank() }?.let { put("playlistSetVideoId", it) }
-                endpoint.params?.takeIf { it.isNotBlank() }?.let { put("params", it) }
-                endpoint.index?.let { put("index", it) }
                 continuation?.takeIf { it.isNotBlank() }?.let { put("continuation", it) }
+                if (continuation.isNullOrBlank()) {
+                    endpoint.videoId.takeIf { it.isNotBlank() }?.let { put("videoId", it) }
+                    endpoint.playlistId?.takeIf { it.isNotBlank() }?.let { put("playlistId", it) }
+                    endpoint.playlistSetVideoId?.takeIf { it.isNotBlank() }?.let { put("playlistSetVideoId", it) }
+                    endpoint.params?.takeIf { it.isNotBlank() }?.let { put("params", it) }
+                    endpoint.index?.let { put("index", it) }
+                }
             }
         return post("next", body)
     }
@@ -1158,6 +1287,13 @@ class YouTubeApiClient {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
         private const val USER_AGENT_ANDROID =
             "com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip"
+        private val RADIO_BLOCKED_HINTS = listOf(
+            "official music video",
+            "music video",
+            "lyric video",
+            "lyrics video",
+            "visualizer"
+        )
     }
 
     private data class RadioWatchEndpoint(

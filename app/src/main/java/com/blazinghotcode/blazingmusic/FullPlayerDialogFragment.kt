@@ -413,8 +413,6 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
             }
                 .getOrDefault(emptyList())
                 .asSequence()
-                .filter { it.videoId != seedVideoId }
-                .filter(::isRadioSongCandidate)
                 .distinctBy { it.videoId ?: it.id }
                 .toList()
 
@@ -465,22 +463,6 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         } else {
             showToast("No upcoming songs to clear")
         }
-    }
-
-    private fun isRadioSongCandidate(item: YouTubeVideo): Boolean {
-        if (item.videoId.isNullOrBlank()) return false
-        if (item.type != YouTubeItemType.SONG) return false
-        val section = item.sectionTitle.orEmpty()
-        if (section.contains("video", ignoreCase = true)) return false
-        val text = "${item.title} ${item.channelTitle}".lowercase()
-        val blockedHints = listOf(
-            "official music video",
-            "music video",
-            "lyric video",
-            "lyrics video",
-            "visualizer"
-        )
-        return blockedHints.none { hint -> text.contains(hint) }
     }
 
     private suspend fun resolvePlayableRadioSong(item: YouTubeVideo): Song? {

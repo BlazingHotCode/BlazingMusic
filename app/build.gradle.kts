@@ -11,6 +11,10 @@ val keystoreFile = rootProject.file("keystore.properties")
 if (keystoreFile.exists()) {
     keystoreProperties.load(keystoreFile.inputStream())
 }
+val hasReleaseSigning = keystoreProperties.containsKey("storeFile") &&
+    keystoreProperties.containsKey("storePassword") &&
+    keystoreProperties.containsKey("keyAlias") &&
+    keystoreProperties.containsKey("keyPassword")
 
 android {
     namespace = "com.blazinghotcode.blazingmusic"
@@ -48,6 +52,9 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
 
         create("uitest") {
