@@ -10,8 +10,12 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.ContextThemeWrapper
+import android.view.GestureDetector
 import android.view.Gravity
 import android.view.Menu
+import android.view.MotionEvent
+import android.view.VelocityTracker
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.view.View
@@ -45,6 +49,7 @@ import coil.transform.RoundedCornersTransformation
 import android.os.Handler
 import android.os.Looper
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 
@@ -84,10 +89,15 @@ class MainActivity : AppCompatActivity() {
     private var shouldRestartQueue = false
     private lateinit var playlistContainer: View
     private var queueDialog: BottomSheetDialog? = null
+    private var queueSheetBehavior: BottomSheetBehavior<FrameLayout>? = null
     private var queueEditorAdapter: QueueEditorAdapter? = null
     private var isQueueDragInProgress = false
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var currentSongSort = SongSortOption.TITLE
+    private var miniPlayerStartX = 0f
+    private var miniPlayerStartY = 0f
+    private var miniPlayerDragActive = false
+    private var miniPlayerVelocityTracker: VelocityTracker? = null
     private val sortPrefs by lazy {
         getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -226,9 +236,95 @@ class MainActivity : AppCompatActivity() {
             viewModel.toggleRepeat()
         }
 
-        playerLayout.setOnClickListener {
-            showQueueDialog()
+        setupMiniPlayerExpandGesture { showFullScreenPlayer() }
+    }
+
+    private fun setupMiniPlayerExpandGesture(onOpen: () -> Unit) {
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+        playerLayout.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    miniPlayerStartX = event.rawX
+                    miniPlayerStartY = event.rawY
+                    miniPlayerDragActive = false
+                    miniPlayerVelocityTracker?.recycle()
+                    miniPlayerVelocityTracker = VelocityTracker.obtain().apply { addMovement(event) }
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    miniPlayerVelocityTracker?.addMovement(event)
+                    val deltaX = event.rawX - miniPlayerStartX
+                    val deltaY = event.rawY - miniPlayerStartY
+                    val verticalDominant = kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX)
+                    if (deltaY < 0f && verticalDominant) {
+                        miniPlayerDragActive = true
+                        applyMiniPlayerDrag(deltaY)
+                        true
+                    } else {
+                        false
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    miniPlayerVelocityTracker?.addMovement(event)
+                    miniPlayerVelocityTracker?.computeCurrentVelocity(1000)
+                    val deltaX = event.rawX - miniPlayerStartX
+                    val deltaY = event.rawY - miniPlayerStartY
+                    val velocityY = miniPlayerVelocityTracker?.yVelocity ?: 0f
+                    miniPlayerVelocityTracker?.recycle()
+                    miniPlayerVelocityTracker = null
+
+                    val dragOpenDistance = dp(90).toFloat()
+                    val fastOpenDistance = dp(16).toFloat()
+                    val fastOpenVelocity = dp(520).toFloat()
+                    val verticalDominant = kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX)
+                    val shouldOpenFromDrag = verticalDominant && (
+                        deltaY < -dragOpenDistance ||
+                            (deltaY < -fastOpenDistance && velocityY < -fastOpenVelocity)
+                        )
+                    val isTap = kotlin.math.abs(deltaY) < touchSlop && kotlin.math.abs(deltaX) < touchSlop
+
+                    when {
+                        shouldOpenFromDrag || isTap -> {
+                            animateMiniPlayerToRest()
+                            onOpen()
+                            true
+                        }
+                        miniPlayerDragActive -> {
+                            animateMiniPlayerToRest()
+                            true
+                        }
+                        else -> false
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    miniPlayerVelocityTracker?.recycle()
+                    miniPlayerVelocityTracker = null
+                    if (miniPlayerDragActive) {
+                        animateMiniPlayerToRest()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> false
+            }
         }
+    }
+
+    private fun applyMiniPlayerDrag(deltaY: Float) {
+        val clamped = deltaY.coerceAtMost(0f).coerceAtLeast(-dp(56).toFloat())
+        playerLayout.translationY = clamped
+        val alphaLoss = kotlin.math.min(0.18f, kotlin.math.abs(clamped) / dp(220).toFloat())
+        playerLayout.alpha = 1f - alphaLoss
+    }
+
+    private fun animateMiniPlayerToRest() {
+        miniPlayerDragActive = false
+        playerLayout.animate()
+            .translationY(0f)
+            .alpha(1f)
+            .setDuration(160L)
+            .start()
     }
 
     private fun setupPlaylistControls() {
@@ -310,6 +406,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    fun showQueueSheet() {
+        showQueueDialog()
+    }
+
+    fun beginQueueSheetDrag() {
+        if (queueSongs.isEmpty()) return
+        showQueueDialog()
+        val behavior = queueSheetBehavior ?: return
+        behavior.isFitToContents = false
+        behavior.skipCollapsed = false
+        behavior.isHideable = true
+        behavior.peekHeight = dp(120)
+        behavior.state = BottomSheetBehavior.STATE_COLLAPSED
+    }
+
+    fun updateQueueSheetDrag(dragDistancePx: Float) {
+        val behavior = queueSheetBehavior ?: return
+        val minPeek = dp(120)
+        val maxPeek = (resources.displayMetrics.heightPixels * 0.82f).toInt()
+        val targetPeek = (minPeek + dragDistancePx.toInt()).coerceIn(minPeek, maxPeek)
+        behavior.peekHeight = targetPeek
+        if (behavior.state != BottomSheetBehavior.STATE_COLLAPSED) {
+            behavior.state = BottomSheetBehavior.STATE_COLLAPSED
+        }
+    }
+
+    fun endQueueSheetDrag(shouldOpen: Boolean) {
+        val behavior = queueSheetBehavior ?: return
+        if (shouldOpen) {
+            behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        } else {
+            queueDialog?.dismiss()
+        }
+    }
+
+    fun showFullScreenPlayer() {
+        if (viewModel.currentSong.value == null) return
+        if (supportFragmentManager.findFragmentByTag(FullPlayerDialogFragment.TAG) != null) return
+        FullPlayerDialogFragment().show(supportFragmentManager, FullPlayerDialogFragment.TAG)
+    }
+
     private fun showQueueDialog() {
         if (queueSongs.isEmpty()) {
             dialogBuilder()
@@ -317,6 +454,10 @@ class MainActivity : AppCompatActivity() {
                 .setMessage("Queue is empty.")
                 .setPositiveButton("OK", null)
                 .showStyledDialog()
+            return
+        }
+        if (queueDialog?.isShowing == true) {
+            queueEditorAdapter?.submitQueue(queueSongs, queueCurrentIndex)
             return
         }
 
@@ -390,7 +531,6 @@ class MainActivity : AppCompatActivity() {
         })
         itemTouchHelper.attachToRecyclerView(queueRecycler)
 
-        queueDialog?.dismiss()
         val title = TextView(this).apply {
             text = "Playback Queue"
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
@@ -425,12 +565,61 @@ class MainActivity : AppCompatActivity() {
         }
         queueDialog = BottomSheetDialog(this, R.style.ThemeOverlay_BlazingMusic_BottomSheet).apply {
             setContentView(root)
+            setOnShowListener { dialog ->
+                val sheet = (dialog as BottomSheetDialog)
+                    .findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)
+                queueSheetBehavior = sheet?.let { BottomSheetBehavior.from(it) }
+                sheet?.let { bottomSheet ->
+                    attachQueueFastCloseGesture(bottomSheet, root, title)
+                }
+            }
             show()
         }
         queueDialog?.setOnDismissListener {
             queueEditorAdapter = null
             queueDialog = null
+            queueSheetBehavior = null
         }
+    }
+
+    private fun attachQueueFastCloseGesture(
+        bottomSheet: FrameLayout,
+        root: View,
+        title: TextView
+    ) {
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                val start = e1 ?: return false
+                val deltaY = e2.rawY - start.rawY
+                val verticalDominant = kotlin.math.abs(deltaY) > kotlin.math.abs(e2.rawX - start.rawX)
+                val fastCloseDistance = dp(12)
+                val fastCloseVelocity = dp(320).toFloat()
+                val shouldFastClose = verticalDominant &&
+                    deltaY > fastCloseDistance &&
+                    velocityY > fastCloseVelocity
+                if (shouldFastClose) {
+                    queueDialog?.dismiss()
+                    return true
+                }
+                return false
+            }
+        })
+
+        val listener = View.OnTouchListener { _, event ->
+            detector.onTouchEvent(event)
+            false
+        }
+
+        bottomSheet.setOnTouchListener(listener)
+        root.setOnTouchListener(listener)
+        title.setOnTouchListener(listener)
     }
 
     private fun showQueueItemMenu(index: Int, anchor: View) {

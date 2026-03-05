@@ -45,6 +45,12 @@
         <item name="bottomSheetStyle">@style/Widget.BlazingMusic.BottomSheet</item>
     </style>
 
+    <style name="ThemeOverlay.BlazingMusic.FullScreenDialog" parent="ThemeOverlay.Material3.Dialog">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/bg_primary</item>
+    </style>
+
     <style name="Widget.BlazingMusic.BottomSheet" parent="Widget.Material3.BottomSheet">
         <item name="android:background">@drawable/bg_bottom_sheet_surface</item>
     </style>

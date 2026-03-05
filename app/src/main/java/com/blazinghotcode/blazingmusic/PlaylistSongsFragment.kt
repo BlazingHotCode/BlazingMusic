@@ -6,7 +6,10 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.ContextThemeWrapper
 import android.view.Menu
+import android.view.MotionEvent
 import android.view.View
+import android.view.VelocityTracker
+import android.view.ViewConfiguration
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
@@ -76,6 +79,10 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     private var currentSongSort = PlaylistSongSortOption.TITLE
     private var dragSnapshot: MutableList<Song> = mutableListOf()
     private var isDragInProgress = false
+    private var miniPlayerStartX = 0f
+    private var miniPlayerStartY = 0f
+    private var miniPlayerDragActive = false
+    private var miniPlayerVelocityTracker: VelocityTracker? = null
     private val sortPrefs by lazy {
         requireContext().getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -231,6 +238,97 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         btnNext.setOnClickListener { viewModel.playNext() }
         btnShuffle.setOnClickListener { viewModel.toggleShuffle() }
         btnRepeat.setOnClickListener { viewModel.toggleRepeat() }
+        setupMiniPlayerExpandGesture {
+            (activity as? MainActivity)?.showFullScreenPlayer()
+        }
+    }
+
+    private fun setupMiniPlayerExpandGesture(onOpen: () -> Unit) {
+        val touchSlop = ViewConfiguration.get(requireContext()).scaledTouchSlop.toFloat()
+        playerLayout.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    miniPlayerStartX = event.rawX
+                    miniPlayerStartY = event.rawY
+                    miniPlayerDragActive = false
+                    miniPlayerVelocityTracker?.recycle()
+                    miniPlayerVelocityTracker = VelocityTracker.obtain().apply { addMovement(event) }
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    miniPlayerVelocityTracker?.addMovement(event)
+                    val deltaX = event.rawX - miniPlayerStartX
+                    val deltaY = event.rawY - miniPlayerStartY
+                    val verticalDominant = kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX)
+                    if (deltaY < 0f && verticalDominant) {
+                        miniPlayerDragActive = true
+                        applyMiniPlayerDrag(deltaY)
+                        true
+                    } else {
+                        false
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    miniPlayerVelocityTracker?.addMovement(event)
+                    miniPlayerVelocityTracker?.computeCurrentVelocity(1000)
+                    val deltaX = event.rawX - miniPlayerStartX
+                    val deltaY = event.rawY - miniPlayerStartY
+                    val velocityY = miniPlayerVelocityTracker?.yVelocity ?: 0f
+                    miniPlayerVelocityTracker?.recycle()
+                    miniPlayerVelocityTracker = null
+
+                    val dragOpenDistance = dp(90f)
+                    val fastOpenDistance = dp(16f)
+                    val fastOpenVelocity = dp(520f)
+                    val verticalDominant = kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX)
+                    val shouldOpenFromDrag = verticalDominant && (
+                        deltaY < -dragOpenDistance ||
+                            (deltaY < -fastOpenDistance && velocityY < -fastOpenVelocity)
+                        )
+                    val isTap = kotlin.math.abs(deltaY) < touchSlop && kotlin.math.abs(deltaX) < touchSlop
+
+                    when {
+                        shouldOpenFromDrag || isTap -> {
+                            animateMiniPlayerToRest()
+                            onOpen()
+                            true
+                        }
+                        miniPlayerDragActive -> {
+                            animateMiniPlayerToRest()
+                            true
+                        }
+                        else -> false
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    miniPlayerVelocityTracker?.recycle()
+                    miniPlayerVelocityTracker = null
+                    if (miniPlayerDragActive) {
+                        animateMiniPlayerToRest()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun applyMiniPlayerDrag(deltaY: Float) {
+        val clamped = deltaY.coerceAtMost(0f).coerceAtLeast(-dp(56f))
+        playerLayout.translationY = clamped
+        val alphaLoss = kotlin.math.min(0.18f, kotlin.math.abs(clamped) / dp(220f))
+        playerLayout.alpha = 1f - alphaLoss
+    }
+
+    private fun animateMiniPlayerToRest() {
+        miniPlayerDragActive = false
+        playerLayout.animate()
+            .translationY(0f)
+            .alpha(1f)
+            .setDuration(160L)
+            .start()
     }
 
     private fun observeViewModel() {
@@ -564,6 +662,10 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         val minutes = (durationMs / 1000) / 60
         val seconds = (durationMs / 1000) % 60
         return String.format("%d:%02d", minutes, seconds)
+    }
+
+    private fun dp(value: Float): Float {
+        return value * resources.displayMetrics.density
     }
 
     private fun tintSearchStartIcon() {
