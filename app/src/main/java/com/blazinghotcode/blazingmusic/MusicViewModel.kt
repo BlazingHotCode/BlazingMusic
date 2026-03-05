@@ -37,6 +37,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _songs = MutableLiveData<List<Song>>()
     val songs: LiveData<List<Song>> = _songs
+    private val _libraryLoadState = MutableLiveData<LibraryLoadState>(LibraryLoadState.Loading)
+    val libraryLoadState: LiveData<LibraryLoadState> = _libraryLoadState
 
     private val _currentSong = MutableLiveData<Song?>()
     val currentSong: LiveData<Song?> = _currentSong
@@ -122,36 +124,54 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadSongs() {
         viewModelScope.launch {
-            normalQueue = repository.getAllSongs()
-            _songs.value = normalQueue
-            val restored = restorePersistedQueue(normalQueue)
-            activeQueue = restored.first ?: if (_isShuffleEnabled.value == true) {
-                buildShuffledQueue(normalQueue)
-            } else {
-                normalQueue
-            }
-            _queue.value = activeQueue
-            currentQueueIndexInternal = if (restored.second in activeQueue.indices) {
-                restored.second
-            } else {
-                -1
-            }
-            _currentQueueIndex.value = currentQueueIndexInternal
-            _currentSong.value = if (currentQueueIndexInternal in activeQueue.indices) {
-                activeQueue[currentQueueIndexInternal]
-            } else {
-                null
-            }
-            if (currentQueueIndexInternal in activeQueue.indices) {
-                val restoredSong = activeQueue[currentQueueIndexInternal]
-                val restoredPositionMs = readPersistedPositionMs()
-                _shouldRestartQueue.value = false
-                prepareRestoredSong(restoredSong, restoredPositionMs)
-                persistQueueState(positionOverrideMs = restoredPositionMs)
-            } else {
+            _libraryLoadState.value = LibraryLoadState.Loading
+            try {
+                normalQueue = repository.getAllSongs()
+                _songs.value = normalQueue
+                _libraryLoadState.value = if (normalQueue.isEmpty()) {
+                    LibraryLoadState.Empty
+                } else {
+                    LibraryLoadState.Content
+                }
+                val restored = restorePersistedQueue(normalQueue)
+                activeQueue = restored.first ?: if (_isShuffleEnabled.value == true) {
+                    buildShuffledQueue(normalQueue)
+                } else {
+                    normalQueue
+                }
+                _queue.value = activeQueue
+                currentQueueIndexInternal = if (restored.second in activeQueue.indices) {
+                    restored.second
+                } else {
+                    -1
+                }
+                _currentQueueIndex.value = currentQueueIndexInternal
+                _currentSong.value = if (currentQueueIndexInternal in activeQueue.indices) {
+                    activeQueue[currentQueueIndexInternal]
+                } else {
+                    null
+                }
+                if (currentQueueIndexInternal in activeQueue.indices) {
+                    val restoredSong = activeQueue[currentQueueIndexInternal]
+                    val restoredPositionMs = readPersistedPositionMs()
+                    _shouldRestartQueue.value = false
+                    prepareRestoredSong(restoredSong, restoredPositionMs)
+                    persistQueueState(positionOverrideMs = restoredPositionMs)
+                } else {
+                    persistQueueState(positionOverrideMs = 0L)
+                }
+                refreshPlaybackNotification()
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to load songs", t)
+                _songs.value = emptyList()
+                _queue.value = emptyList()
+                _currentQueueIndex.value = -1
+                _currentSong.value = null
+                _libraryLoadState.value = LibraryLoadState.Error(
+                    t.message?.takeIf { it.isNotBlank() } ?: "Unable to load songs from device storage."
+                )
                 persistQueueState(positionOverrideMs = 0L)
             }
-            refreshPlaybackNotification()
         }
     }
 
@@ -725,4 +745,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         exoPlayer = null
     }
+}
+
+sealed class LibraryLoadState {
+    data object Loading : LibraryLoadState()
+    data object Content : LibraryLoadState()
+    data object Empty : LibraryLoadState()
+    data class Error(val message: String) : LibraryLoadState()
 }

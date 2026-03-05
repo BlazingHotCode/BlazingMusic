@@ -5,8 +5,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.TypedValue
@@ -59,6 +61,9 @@ class MainActivity : AppCompatActivity() {
         private const val SORT_PREFS_NAME = "blazing_music_sort_prefs"
         private const val KEY_HOME_SORT = "home_sort"
         private const val SEARCH_DEBOUNCE_MS = 220L
+        private const val APP_PREFS_NAME = "blazing_music_app_prefs"
+        private const val KEY_AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
+        private const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
     }
 
     private val viewModel: MusicViewModel by viewModels()
@@ -83,6 +88,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTotalTime: TextView
     private lateinit var etSearch: EditText
     private lateinit var btnSortSongs: Button
+    private lateinit var homeStateContainer: View
+    private lateinit var tvHomeStateTitle: TextView
+    private lateinit var tvHomeStateMessage: TextView
+    private lateinit var btnHomeStateAction: Button
     private lateinit var songAlphabetIndex: AlphabetIndexView
     private lateinit var songScrollTrack: View
     private lateinit var songScrollThumb: View
@@ -99,12 +108,17 @@ class MainActivity : AppCompatActivity() {
     private var isQueueDragInProgress = false
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var currentSongSort = SongSortOption.TITLE
+    private var hasAudioPermission = false
+    private var hasNotificationPermission = true
     private var miniPlayerStartX = 0f
     private var miniPlayerStartY = 0f
     private var miniPlayerDragActive = false
     private var miniPlayerVelocityTracker: VelocityTracker? = null
     private val sortPrefs by lazy {
         getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
+    }
+    private val appPrefs by lazy {
+        getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE)
     }
     private val handler = Handler(Looper.getMainLooper())
     private var searchDebounceRunnable: Runnable? = null
@@ -122,17 +136,33 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            viewModel.loadSongs()
+            hasAudioPermission = true
+            hasNotificationPermission = isNotificationPermissionGranted()
+            if (hasNotificationPermission) {
+                viewModel.loadSongs()
+            } else {
+                requestNotificationPermissionIfNeeded()
+            }
+        } else {
+            hasAudioPermission = false
+            appPrefs.edit().putBoolean(KEY_AUDIO_PERMISSION_REQUESTED, true).apply()
         }
-        requestNotificationPermissionIfNeeded()
+        updateHomeLibraryStateUi()
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (!isGranted) {
-            showToast("Notification controls may be limited without notification permission")
+        hasNotificationPermission = isGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+        if (!isGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            appPrefs.edit().putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true).apply()
         }
+        if (hasAudioPermission && hasNotificationPermission) {
+            viewModel.loadSongs()
+        } else if (!isGranted) {
+            showToast("Notification permission is required")
+        }
+        updateHomeLibraryStateUi()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -191,11 +221,16 @@ class MainActivity : AppCompatActivity() {
         tvTotalTime = findViewById(R.id.tvTotalTime)
         etSearch = findViewById(R.id.etSearch)
         btnSortSongs = findViewById(R.id.btnSortSongs)
+        homeStateContainer = findViewById(R.id.homeStateContainer)
+        tvHomeStateTitle = findViewById(R.id.tvHomeStateTitle)
+        tvHomeStateMessage = findViewById(R.id.tvHomeStateMessage)
+        btnHomeStateAction = findViewById(R.id.btnHomeStateAction)
         songAlphabetIndex = findViewById(R.id.songAlphabetIndex)
         songScrollTrack = findViewById(R.id.songScrollTrack)
         songScrollThumb = findViewById(R.id.songScrollThumb)
         playlistContainer = findViewById(R.id.playlistContainer)
         currentSongSort = loadHomeSort()
+        btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
         tintSearchStartIcon()
         applySystemInsets()
     }
@@ -413,6 +448,10 @@ class MainActivity : AppCompatActivity() {
         viewModel.songs.observe(this) { songs ->
             allSongs = songs
             applySongListPresentation()
+        }
+
+        viewModel.libraryLoadState.observe(this) {
+            updateHomeLibraryStateUi()
         }
 
         viewModel.currentSong.observe(this) { song ->
@@ -1241,6 +1280,144 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateHomeLibraryStateUi() {
+        val isOnHomeTab = playlistContainer.visibility != View.VISIBLE
+        if (!isOnHomeTab) {
+            homeStateContainer.visibility = View.GONE
+            rvSongs.visibility = View.VISIBLE
+            etSearch.visibility = View.VISIBLE
+            btnSortSongs.visibility = View.VISIBLE
+            return
+        }
+
+        if (!hasAudioPermission) {
+            showHomeState(
+                title = "Storage permission needed",
+                message = "Allow audio access to load songs from your device library.",
+                actionLabel = "Grant permission"
+            )
+            return
+        }
+        if (!hasNotificationPermission) {
+            showHomeState(
+                title = "Notification permission needed",
+                message = "Allow notifications to use playback controls and continue.",
+                actionLabel = "Grant permission"
+            )
+            return
+        }
+
+        when (val state = viewModel.libraryLoadState.value ?: LibraryLoadState.Loading) {
+            LibraryLoadState.Loading -> {
+                showHomeState(
+                    title = "Loading songs",
+                    message = "Scanning your local library...",
+                    actionLabel = "Retry"
+                )
+            }
+            LibraryLoadState.Content -> {
+                homeStateContainer.visibility = View.GONE
+                rvSongs.visibility = View.VISIBLE
+                etSearch.visibility = View.VISIBLE
+                btnSortSongs.visibility = View.VISIBLE
+            }
+            LibraryLoadState.Empty -> {
+                showHomeState(
+                    title = "No songs found",
+                    message = "No local audio files are available right now.",
+                    actionLabel = "Scan again"
+                )
+            }
+            is LibraryLoadState.Error -> {
+                showHomeState(
+                    title = "Could not load songs",
+                    message = state.message,
+                    actionLabel = "Retry"
+                )
+            }
+        }
+    }
+
+    private fun showHomeState(title: String, message: String, actionLabel: String) {
+        homeStateContainer.visibility = View.VISIBLE
+        rvSongs.visibility = View.GONE
+        etSearch.visibility = View.GONE
+        btnSortSongs.visibility = View.GONE
+        songAlphabetIndex.visibility = View.GONE
+        songScrollTrack.visibility = View.GONE
+        songScrollThumb.visibility = View.GONE
+        tvHomeStateTitle.text = title
+        tvHomeStateMessage.text = message
+        btnHomeStateAction.text = actionLabel
+    }
+
+    private fun onHomeStateActionClicked() {
+        if (!hasAudioPermission) {
+            requestAudioPermissionFromState()
+            return
+        }
+        if (!hasNotificationPermission) {
+            requestNotificationPermissionFromState()
+            return
+        }
+        viewModel.loadSongs()
+    }
+
+    private fun requestAudioPermissionFromState() {
+        val permission = audioReadPermission()
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+            hasAudioPermission = true
+            viewModel.loadSongs()
+            updateHomeLibraryStateUi()
+            return
+        }
+
+        val requestedBefore = appPrefs.getBoolean(KEY_AUDIO_PERMISSION_REQUESTED, false)
+        val shouldShowRationale = shouldShowRequestPermissionRationale(permission)
+        if (!requestedBefore || shouldShowRationale) {
+            appPrefs.edit().putBoolean(KEY_AUDIO_PERMISSION_REQUESTED, true).apply()
+            permissionLauncher.launch(permission)
+        } else {
+            showToast("Enable audio permission in App settings")
+            openAppPermissionSettings()
+        }
+    }
+
+    private fun openAppPermissionSettings() {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", packageName, null)
+        )
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+    }
+
+    private fun requestNotificationPermissionFromState() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            hasNotificationPermission = true
+            viewModel.loadSongs()
+            updateHomeLibraryStateUi()
+            return
+        }
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+            hasNotificationPermission = true
+            viewModel.loadSongs()
+            updateHomeLibraryStateUi()
+            return
+        }
+
+        val requestedBefore = appPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+        val shouldShowRationale = shouldShowRequestPermissionRationale(permission)
+        if (!requestedBefore || shouldShowRationale) {
+            appPrefs.edit().putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true).apply()
+            notificationPermissionLauncher.launch(permission)
+        } else {
+            showToast("Enable notification permission in App settings")
+            openAppPermissionSettings()
+        }
+    }
+
     private fun tintSearchStartIcon() {
         val drawables = etSearch.compoundDrawablesRelative
         val start = drawables[0]?.mutate()
@@ -1262,20 +1439,40 @@ class MainActivity : AppCompatActivity() {
         setPadding(horizontal, vertical, horizontal, vertical)
     }
 
-    private fun checkPermissions() {
-        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    private fun audioReadPermission(): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             Manifest.permission.READ_MEDIA_AUDIO
         } else {
             Manifest.permission.READ_EXTERNAL_STORAGE
         }
+    }
+
+    private fun isNotificationPermissionGranted(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun checkPermissions() {
+        val permission = audioReadPermission()
 
         when {
             ContextCompat.checkSelfPermission(this, permission) ==
                 PackageManager.PERMISSION_GRANTED -> {
-                viewModel.loadSongs()
-                requestNotificationPermissionIfNeeded()
+                hasAudioPermission = true
+                hasNotificationPermission = isNotificationPermissionGranted()
+                if (hasNotificationPermission) {
+                    viewModel.loadSongs()
+                } else {
+                    requestNotificationPermissionIfNeeded()
+                }
+                updateHomeLibraryStateUi()
             }
             else -> {
+                hasAudioPermission = false
+                hasNotificationPermission = isNotificationPermissionGranted()
+                updateHomeLibraryStateUi()
+                appPrefs.edit().putBoolean(KEY_AUDIO_PERMISSION_REQUESTED, true).apply()
                 permissionLauncher.launch(permission)
             }
         }
@@ -1286,13 +1483,23 @@ class MainActivity : AppCompatActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
         ) {
+            hasNotificationPermission = true
             return
         }
+        hasNotificationPermission = false
+        appPrefs.edit().putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true).apply()
         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     override fun onResume() {
         super.onResume()
+        hasAudioPermission = ContextCompat.checkSelfPermission(this, audioReadPermission()) ==
+            PackageManager.PERMISSION_GRANTED
+        hasNotificationPermission = isNotificationPermissionGranted()
+        if (hasAudioPermission && hasNotificationPermission && allSongs.isEmpty()) {
+            viewModel.loadSongs()
+        }
+        updateHomeLibraryStateUi()
         handler.post(updateSeekbarRunnable)
     }
 
@@ -1348,6 +1555,7 @@ class MainActivity : AppCompatActivity() {
         }
         updateBottomNavSelection(homeSelected = false)
         refreshSongAlphabetIndexVisibility()
+        updateHomeLibraryStateUi()
     }
 
     fun openPlaylistSongs(playlistId: Long, playlistName: String) {
@@ -1369,6 +1577,7 @@ class MainActivity : AppCompatActivity() {
         if (playlistContainer.visibility != View.VISIBLE) {
             updateBottomNavSelection(homeSelected = true)
             refreshSongAlphabetIndexVisibility()
+            updateHomeLibraryStateUi()
             return
         }
         supportFragmentManager.popBackStackImmediate(
@@ -1383,6 +1592,7 @@ class MainActivity : AppCompatActivity() {
                 playlistContainer.visibility = View.GONE
                 playlistContainer.translationX = 0f
                 refreshSongAlphabetIndexVisibility()
+                updateHomeLibraryStateUi()
             }
             .start()
         updateBottomNavSelection(homeSelected = true)

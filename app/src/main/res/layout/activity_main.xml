@@ -130,6 +130,57 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/rvSongs" />
 
+    <LinearLayout
+        android:id="@+id/homeStateContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingStart="28dp"
+        android:paddingEnd="28dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/playerLayout"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/etSearch"
+        tools:visibility="visible">
+
+        <TextView
+            android:id="@+id/tvHomeStateTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="No songs found"
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvHomeStateMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:text="Add audio files to your device and try scanning again."
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/btnHomeStateAction"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_secondary_action_button"
+            android:minWidth="132dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="Scan again"
+            android:textAllCaps="false"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
     <FrameLayout
         android:id="@+id/playlistContainer"
         android:layout_width="0dp"

@@ -25,7 +25,7 @@
 23. [x] Debounce search input for smoother filtering on large libraries.
 24. [x] Add fast-scrolling and alphabetical indexing in song list.
 25. [x] Modernize the full UI/UX and visual design so the app looks polished and production-ready.
-26. [ ] Show empty/error states (no songs, permission denied, load failure).
+26. [x] Show empty/error states (no songs, permission denied, load failure).
 27. [ ] Replace deprecated adapterPosition usage in SongAdapter.
 28. [ ] Add developer-facing code documentation for architecture, playback flow, and key components.
 29. [ ] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
