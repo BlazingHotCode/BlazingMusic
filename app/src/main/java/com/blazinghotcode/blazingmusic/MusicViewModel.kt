@@ -25,6 +25,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_CURRENT_QUEUE_INDEX = "current_queue_index"
         private const val KEY_CURRENT_POSITION_MS = "current_position_ms"
         private const val KEY_PLAYLISTS_JSON = "playlists_json"
+        private const val PREVIOUS_RESTART_THRESHOLD_MS = 4_000L
         private const val TAG = "MusicViewModel"
     }
 
@@ -236,6 +237,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playPrevious() {
         if (activeQueue.isEmpty()) return
+        exoPlayer?.let { player ->
+            val isValidCurrent = currentQueueIndexInternal in activeQueue.indices
+            if (isValidCurrent && player.currentPosition > PREVIOUS_RESTART_THRESHOLD_MS) {
+                player.seekTo(0L)
+                persistQueueState(positionOverrideMs = 0L)
+                return
+            }
+        }
         val canWrapToEnd = (_repeatMode.value ?: 0) == 1 // Repeat all only
         val previousIndex = if (currentQueueIndexInternal == -1) {
             if (canWrapToEnd) activeQueue.lastIndex else 0
