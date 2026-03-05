@@ -69,8 +69,8 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
-          target: default
-          arch: x86
+          target: google_apis
+          arch: x86_64
           profile: pixel_4
           emulator-boot-timeout: 1200
           disable-animations: true
@@ -83,8 +83,8 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
-          target: default
-          arch: x86
+          target: google_apis
+          arch: x86_64
           profile: pixel_4
           emulator-boot-timeout: 1200
           disable-animations: true
