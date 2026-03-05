@@ -19,7 +19,6 @@ val hasReleaseSigning = keystoreProperties.containsKey("storeFile") &&
 android {
     namespace = "com.blazinghotcode.blazingmusic"
     compileSdk = 35
-    buildToolsVersion = "35.0.0"
     testBuildType = "uitest"
 
     buildFeatures {
