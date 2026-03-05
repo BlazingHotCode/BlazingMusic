@@ -92,6 +92,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTotalTime: TextView
     private lateinit var etSearch: EditText
     private lateinit var btnSortSongs: Button
+    private lateinit var btnSettings: ImageButton
     private lateinit var homeStateContainer: View
     private lateinit var tvHomeStateTitle: TextView
     private lateinit var tvHomeStateMessage: TextView
@@ -226,6 +227,7 @@ class MainActivity : AppCompatActivity() {
         tvTotalTime = findViewById(R.id.tvTotalTime)
         etSearch = findViewById(R.id.etSearch)
         btnSortSongs = findViewById(R.id.btnSortSongs)
+        btnSettings = findViewById(R.id.btnSettings)
         homeStateContainer = findViewById(R.id.homeStateContainer)
         tvHomeStateTitle = findViewById(R.id.tvHomeStateTitle)
         tvHomeStateMessage = findViewById(R.id.tvHomeStateMessage)
@@ -237,6 +239,9 @@ class MainActivity : AppCompatActivity() {
         playlistContainer = findViewById(R.id.playlistContainer)
         currentSongSort = loadHomeSort()
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
+        btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
         setupDebugAnalyticsViewer()
         tintSearchStartIcon()
         applySystemInsets()
@@ -1524,6 +1529,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        viewModel.refreshPlaybackSettingsFromStorage()
         hasAudioPermission = ContextCompat.checkSelfPermission(this, audioReadPermission()) ==
             PackageManager.PERMISSION_GRANTED
         hasNotificationPermission = isNotificationPermissionGranted()

@@ -8,6 +8,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -35,6 +37,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = MusicRepository(application)
     private var exoPlayer: ExoPlayer? = null
+    private var playbackSettings: PlaybackSettings = PlaybackSettings(
+        defaultShuffleEnabled = false,
+        defaultRepeatMode = 0,
+        handleAudioFocus = true,
+        pauseOnNoisyOutput = true
+    )
     private val prefs by lazy {
         getApplication<Application>().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -80,8 +88,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var playlistsInternal: List<Playlist> = emptyList()
 
     init {
-        _isShuffleEnabled.value = false
-        _repeatMode.value = 0
+        playbackSettings = PlaybackSettingsStore.read(application.applicationContext)
+        _isShuffleEnabled.value = playbackSettings.defaultShuffleEnabled
+        _repeatMode.value = playbackSettings.defaultRepeatMode
         _shouldRestartQueue.value = false
         _currentQueueIndex.value = -1
         _queue.value = emptyList()
@@ -94,6 +103,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         app.startService(Intent(app, MusicService::class.java))
         exoPlayer = SharedPlayer.getOrCreate(app).apply {
             val player = this
+            applyPlaybackAudioOptions(player, playbackSettings)
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(playing: Boolean) {
                     _isPlaying.postValue(playing)
@@ -629,6 +639,17 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         refreshPlaybackNotification()
     }
 
+    fun refreshPlaybackSettingsFromStorage() {
+        val updated = PlaybackSettingsStore.read(getApplication<Application>().applicationContext)
+        playbackSettings = updated
+        val isIdleQueue = activeQueue.isEmpty() || _currentSong.value == null
+        if (isIdleQueue) {
+            _isShuffleEnabled.value = updated.defaultShuffleEnabled
+            _repeatMode.value = updated.defaultRepeatMode
+        }
+        exoPlayer?.let { applyPlaybackAudioOptions(it, updated) }
+    }
+
     fun handleExternalPlaybackAction(action: String) {
         handleNotificationAction(action)
     }
@@ -660,6 +681,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     .build()
             )
             .build()
+    }
+
+    private fun applyPlaybackAudioOptions(player: ExoPlayer, settings: PlaybackSettings) {
+        val attributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .build()
+        player.setAudioAttributes(attributes, settings.handleAudioFocus)
+        player.setHandleAudioBecomingNoisy(settings.pauseOnNoisyOutput)
     }
 
     private fun publishPlaylists() {

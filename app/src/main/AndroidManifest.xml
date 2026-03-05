@@ -38,6 +38,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+                android:name=".SettingsActivity"
+                android:exported="false"
+                android:theme="@style/Theme.BlazingMusic" />
+
         <!-- ============== MUSIC SERVICE ============== -->
         <!-- Background media playback service -->
         <service
