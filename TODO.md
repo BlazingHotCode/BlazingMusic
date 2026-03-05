@@ -45,7 +45,7 @@
 36. [x] Refactor duplicated UI/playback code into modular shared components (reduce near-identical
     implementations like song entry rows across Home/Playlist and similar feature variants with only
     minor differences).
-37. [ ] Centralize YouTube search defaults (e.g., `songsOnly`) into one source of truth shared by
+37. [x] Centralize YouTube search defaults (e.g., `songsOnly`) into one source of truth shared by
     Fragment, Activity, and XML.
 38. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
 39. [ ] Add live lyrics support with word-by-word highlighting (integrate with LRCLIB or similar
