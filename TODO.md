@@ -42,7 +42,7 @@
     recommendations in-app).
 35. [x] Make Mix/Radio logic fully match Metrolist parity (endpoint selection, continuation
     handling, automix fallback behavior, candidate ranking/filtering, and queue stitching semantics)
-36. [ ] Refactor duplicated UI/playback code into modular shared components (reduce near-identical
+36. [x] Refactor duplicated UI/playback code into modular shared components (reduce near-identical
     implementations like song entry rows across Home/Playlist and similar feature variants with only
     minor differences).
 37. [ ] Centralize YouTube search defaults (e.g., `songsOnly`) into one source of truth shared by

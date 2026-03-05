@@ -108,7 +108,7 @@ class SongAdapter(
             val isNowPlaying = song.path == currentSongPath
             binding.tvTitle.text = song.title
             binding.tvArtist.text = song.artist
-            binding.tvDuration.text = formatDuration(song.duration)
+            binding.tvDuration.text = PlaybackTimeFormatter.formatDuration(song.duration)
             binding.tvNowPlaying.visibility = if (isNowPlaying) View.VISIBLE else View.GONE
             binding.root.setBackgroundResource(
                 if (isNowPlaying) R.drawable.bg_song_item_now_playing else R.drawable.bg_song_item
@@ -191,11 +191,6 @@ class SongAdapter(
             }
         }
 
-        private fun formatDuration(durationMs: Long): String {
-            val minutes = (durationMs / 1000) / 60
-            val seconds = (durationMs / 1000) % 60
-            return String.format("%d:%02d", minutes, seconds)
-        }
     }
 
     class SongDiffCallback : DiffUtil.ItemCallback<Song>() {

@@ -10,8 +10,6 @@ import android.view.ContextThemeWrapper
 import android.view.Menu
 import android.view.MotionEvent
 import android.view.View
-import android.view.VelocityTracker
-import android.view.ViewConfiguration
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
@@ -20,15 +18,11 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import coil.load
-import coil.transform.RoundedCornersTransformation
-
 /** Playlist detail screen for song browsing, sorting, bulk actions, and playback start. */
 class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
@@ -86,10 +80,6 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     private var currentSongSort = PlaylistSongSortOption.TITLE
     private var dragSnapshot: MutableList<Song> = mutableListOf()
     private var isDragInProgress = false
-    private var miniPlayerStartX = 0f
-    private var miniPlayerStartY = 0f
-    private var miniPlayerDragActive = false
-    private var miniPlayerVelocityTracker: VelocityTracker? = null
     private val sortPrefs by lazy {
         requireContext().getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -280,97 +270,11 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         btnNext.setOnClickListener { viewModel.playNext() }
         btnShuffle.setOnClickListener { viewModel.toggleShuffle() }
         btnRepeat.setOnClickListener { viewModel.toggleRepeat() }
-        setupMiniPlayerExpandGesture {
-            (activity as? MainActivity)?.showFullScreenPlayer()
-        }
-    }
-
-    private fun setupMiniPlayerExpandGesture(onOpen: () -> Unit) {
-        val touchSlop = ViewConfiguration.get(requireContext()).scaledTouchSlop.toFloat()
-        playerLayout.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    miniPlayerStartX = event.rawX
-                    miniPlayerStartY = event.rawY
-                    miniPlayerDragActive = false
-                    miniPlayerVelocityTracker?.recycle()
-                    miniPlayerVelocityTracker = VelocityTracker.obtain().apply { addMovement(event) }
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    miniPlayerVelocityTracker?.addMovement(event)
-                    val deltaX = event.rawX - miniPlayerStartX
-                    val deltaY = event.rawY - miniPlayerStartY
-                    val verticalDominant = kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX)
-                    if (deltaY < 0f && verticalDominant) {
-                        miniPlayerDragActive = true
-                        applyMiniPlayerDrag(deltaY)
-                        true
-                    } else {
-                        false
-                    }
-                }
-                MotionEvent.ACTION_UP -> {
-                    miniPlayerVelocityTracker?.addMovement(event)
-                    miniPlayerVelocityTracker?.computeCurrentVelocity(1000)
-                    val deltaX = event.rawX - miniPlayerStartX
-                    val deltaY = event.rawY - miniPlayerStartY
-                    val velocityY = miniPlayerVelocityTracker?.yVelocity ?: 0f
-                    miniPlayerVelocityTracker?.recycle()
-                    miniPlayerVelocityTracker = null
-
-                    val dragOpenDistance = dp(90f)
-                    val fastOpenDistance = dp(16f)
-                    val fastOpenVelocity = dp(520f)
-                    val verticalDominant = kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX)
-                    val shouldOpenFromDrag = verticalDominant && (
-                        deltaY < -dragOpenDistance ||
-                            (deltaY < -fastOpenDistance && velocityY < -fastOpenVelocity)
-                        )
-                    val isTap = kotlin.math.abs(deltaY) < touchSlop && kotlin.math.abs(deltaX) < touchSlop
-
-                    when {
-                        shouldOpenFromDrag || isTap -> {
-                            animateMiniPlayerToRest()
-                            onOpen()
-                            true
-                        }
-                        miniPlayerDragActive -> {
-                            animateMiniPlayerToRest()
-                            true
-                        }
-                        else -> false
-                    }
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    miniPlayerVelocityTracker?.recycle()
-                    miniPlayerVelocityTracker = null
-                    if (miniPlayerDragActive) {
-                        animateMiniPlayerToRest()
-                        true
-                    } else {
-                        false
-                    }
-                }
-                else -> false
-            }
-        }
-    }
-
-    private fun applyMiniPlayerDrag(deltaY: Float) {
-        val clamped = deltaY.coerceAtMost(0f).coerceAtLeast(-dp(56f))
-        playerLayout.translationY = clamped
-        val alphaLoss = kotlin.math.min(0.18f, kotlin.math.abs(clamped) / dp(220f))
-        playerLayout.alpha = 1f - alphaLoss
-    }
-
-    private fun animateMiniPlayerToRest() {
-        miniPlayerDragActive = false
-        playerLayout.animate()
-            .translationY(0f)
-            .alpha(1f)
-            .setDuration(160L)
-            .start()
+        MiniPlayerExpandGestureController(
+            playerLayout = playerLayout,
+            toPx = { value -> value * resources.displayMetrics.density },
+            onOpen = { (activity as? MainActivity)?.showFullScreenPlayer() }
+        ).attach()
     }
 
     private fun observeViewModel() {
@@ -390,15 +294,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             songAdapter.setCurrentSong(song)
             song?.let {
                 playerLayout.visibility = View.VISIBLE
-                tvSongTitle.text = it.title
-                tvSongTitle.isSelected = true
-                tvArtist.text = it.artist
-                it.albumArtUri?.let { uri ->
-                    ivAlbumArt.load(uri) {
-                        crossfade(true)
-                        transformations(RoundedCornersTransformation(20f))
-                    }
-                } ?: ivAlbumArt.setImageResource(R.drawable.ml_library_music)
+                MiniPlayerSongUi.bindSong(tvSongTitle, tvArtist, ivAlbumArt, it)
             }
         }
 
@@ -414,12 +310,12 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
         viewModel.duration.observe(viewLifecycleOwner) { duration ->
             seekBar.max = duration.toInt()
-            tvTotalTime.text = formatDuration(duration)
+            tvTotalTime.text = PlaybackTimeFormatter.formatDuration(duration)
         }
 
         viewModel.currentPosition.observe(viewLifecycleOwner) { position ->
             seekBar.progress = position.toInt()
-            tvCurrentTime.text = formatDuration(position)
+            tvCurrentTime.text = PlaybackTimeFormatter.formatDuration(position)
         }
 
         viewModel.isShuffleEnabled.observe(viewLifecycleOwner) { enabled -> updateShuffleUi(enabled) }
@@ -629,43 +525,17 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
     private fun applySongFilter(query: String, preserveScrollOffset: Boolean = false) {
         val previousOffset = if (preserveScrollOffset) rvSongs.computeVerticalScrollOffset() else 0
-        val normalized = query.trim().lowercase()
-        val base = if (normalized.isEmpty()) {
-            playlistSongs
-        } else {
-            playlistSongs.filter {
-                it.title.lowercase().contains(normalized) ||
-                    it.artist.lowercase().contains(normalized) ||
-                    it.album.lowercase().contains(normalized)
-            }
-        }
-        filteredSongs = when (currentSongSort) {
-            PlaylistSongSortOption.CUSTOM -> base
-            PlaylistSongSortOption.TITLE -> base.sortedWith(
-                compareBy<Song> { it.title.lowercase() }.thenBy { it.artist.lowercase() }
-            )
-            PlaylistSongSortOption.ARTIST -> base.sortedWith(
-                compareBy<Song> { it.artist.lowercase() }.thenBy { it.title.lowercase() }
-            )
-            PlaylistSongSortOption.ALBUM -> base.sortedWith(
-                compareBy<Song> { it.album.lowercase() }.thenBy { it.title.lowercase() }
-            )
-            PlaylistSongSortOption.DURATION -> base.sortedWith(
-                compareByDescending<Song> { it.duration }.thenBy { it.title.lowercase() }
-            )
-            PlaylistSongSortOption.RECENTLY_ADDED -> base.sortedWith(
-                compareByDescending<Song> { it.dateAddedSeconds }.thenBy { it.title.lowercase() }
-            )
-        }
-        if (supportsAlphabetIndexForCurrentSort()) {
-            songAlphabetIndex.setAvailableSections(
-                filteredSongs.asSequence()
-                    .map { sectionFromCurrentSort(it) }
-                    .toSet()
-            )
-        } else {
-            songAlphabetIndex.setAvailableSections(emptySet())
-        }
+        filteredSongs = SongListPresentationUi.applySearchAndSort(
+            songs = playlistSongs,
+            query = query,
+            sortMode = currentSortMode()
+        )
+        SongListIndexUi.updateAvailableSections(
+            alphabetIndex = songAlphabetIndex,
+            songs = filteredSongs,
+            isEnabled = supportsAlphabetIndexForCurrentSort(),
+            sectionForSong = { sectionFromCurrentSort(it) }
+        )
         if (preserveScrollOffset) {
             songAdapter.submitList(filteredSongs) {
                 rvSongs.post {
@@ -685,69 +555,48 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     }
 
     private fun scrollSongsToSection(section: Char) {
-        val songs = songAdapter.currentList
-        if (songs.isEmpty()) return
-        val targetIndex = findSectionTargetIndex(songs, section)
-        if (targetIndex == -1) return
-        val layoutManager = rvSongs.layoutManager as? LinearLayoutManager ?: return
-        layoutManager.scrollToPositionWithOffset(targetIndex, 0)
+        SongListIndexUi.scrollToSection(
+            recyclerView = rvSongs,
+            songs = songAdapter.currentList,
+            section = section,
+            sectionForSong = { sectionFromCurrentSort(it) }
+        )
     }
 
     private fun scrollSongsByThumbTouch(rawY: Float) {
-        if (songScrollTrack.height <= 0) return
-        val location = IntArray(2)
-        songScrollTrack.getLocationOnScreen(location)
-        val trackTop = location[1].toFloat()
-        val fraction = ((rawY - trackTop) / songScrollTrack.height.toFloat()).coerceIn(0f, 1f)
-        val scrollRange = (rvSongs.computeVerticalScrollRange() - rvSongs.computeVerticalScrollExtent())
-            .coerceAtLeast(0)
-        val targetOffset = (scrollRange * fraction).toInt()
-        val currentOffset = rvSongs.computeVerticalScrollOffset()
-        rvSongs.scrollBy(0, targetOffset - currentOffset)
-        updateSongScrollThumbPosition()
+        SongListIndexUi.scrollByThumbTouch(
+            recyclerView = rvSongs,
+            scrollTrack = songScrollTrack,
+            rawY = rawY,
+            onThumbMoved = { updateSongScrollThumbPosition() }
+        )
     }
 
     private fun updateSongScrollThumbPosition() {
-        if (songScrollThumb.visibility != View.VISIBLE || songScrollTrack.height <= 0) return
-        val scrollRange = (rvSongs.computeVerticalScrollRange() - rvSongs.computeVerticalScrollExtent())
-            .coerceAtLeast(0)
-        val fraction = if (scrollRange == 0) 0f else rvSongs.computeVerticalScrollOffset() / scrollRange.toFloat()
-        val travel = (songScrollTrack.height - songScrollThumb.height).coerceAtLeast(0)
-        songScrollThumb.translationY = travel * fraction
-    }
-
-    private fun findSectionTargetIndex(songs: List<Song>, section: Char): Int {
-        val exactMatch = songs.indexOfFirst { sectionFromCurrentSort(it) == section }
-        if (exactMatch >= 0) return exactMatch
-        if (section == '#') return 0
-        val fallback = songs.indexOfFirst {
-            val key = sectionFromCurrentSort(it)
-            key in 'A'..'Z' && key > section
-        }
-        return if (fallback >= 0) fallback else songs.lastIndex
+        SongListIndexUi.updateThumbPosition(
+            recyclerView = rvSongs,
+            scrollTrack = songScrollTrack,
+            scrollThumb = songScrollThumb
+        )
     }
 
     private fun sectionFromCurrentSort(song: Song): Char {
-        val key = when (currentSongSort) {
-            PlaylistSongSortOption.TITLE -> song.title
-            PlaylistSongSortOption.ARTIST -> song.artist
-            PlaylistSongSortOption.ALBUM -> song.album
-            PlaylistSongSortOption.CUSTOM,
-            PlaylistSongSortOption.DURATION,
-            PlaylistSongSortOption.RECENTLY_ADDED -> song.title
-        }
-        val first = key.trim().firstOrNull()?.uppercaseChar() ?: return '#'
-        return if (first in 'A'..'Z') first else '#'
+        val key = SongListPresentationUi.sectionLabel(song, currentSortMode())
+        return SongListIndexUi.sectionFromLabel(key)
     }
 
     private fun supportsAlphabetIndexForCurrentSort(): Boolean {
+        return SongListPresentationUi.supportsAlphabetIndex(currentSortMode())
+    }
+
+    private fun currentSortMode(): SongListPresentationUi.SortMode {
         return when (currentSongSort) {
-            PlaylistSongSortOption.TITLE,
-            PlaylistSongSortOption.ARTIST,
-            PlaylistSongSortOption.ALBUM -> true
-            PlaylistSongSortOption.CUSTOM,
-            PlaylistSongSortOption.DURATION,
-            PlaylistSongSortOption.RECENTLY_ADDED -> false
+            PlaylistSongSortOption.CUSTOM -> SongListPresentationUi.SortMode.CUSTOM
+            PlaylistSongSortOption.TITLE -> SongListPresentationUi.SortMode.TITLE
+            PlaylistSongSortOption.ARTIST -> SongListPresentationUi.SortMode.ARTIST
+            PlaylistSongSortOption.ALBUM -> SongListPresentationUi.SortMode.ALBUM
+            PlaylistSongSortOption.DURATION -> SongListPresentationUi.SortMode.DURATION
+            PlaylistSongSortOption.RECENTLY_ADDED -> SongListPresentationUi.SortMode.RECENTLY_ADDED
         }
     }
 
@@ -770,44 +619,27 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     }
 
     private fun updateShuffleUi(isEnabled: Boolean) {
-        btnShuffle.setImageResource(if (isEnabled) R.drawable.ml_shuffle_on else R.drawable.ml_shuffle)
-        val tint = if (isEnabled) R.color.accent_lavender else R.color.text_secondary
-        ImageViewCompat.setImageTintList(
-            btnShuffle,
-            android.content.res.ColorStateList.valueOf(ContextCompat.getColor(requireContext(), tint))
+        PlaybackControlUi.bindShuffleControl(
+            context = requireContext(),
+            button = btnShuffle,
+            isEnabled = isEnabled
         )
     }
 
     private fun updateRepeatUi(mode: Int) {
-        val icon = when (mode) {
-            1 -> R.drawable.ml_repeat_on
-            2 -> R.drawable.ml_repeat_one_on
-            else -> R.drawable.ml_repeat
-        }
-        btnRepeat.setImageResource(icon)
-        val tint = if (mode == 0) R.color.text_secondary else R.color.accent_lavender
-        ImageViewCompat.setImageTintList(
-            btnRepeat,
-            android.content.res.ColorStateList.valueOf(ContextCompat.getColor(requireContext(), tint))
+        PlaybackControlUi.bindRepeatControl(
+            context = requireContext(),
+            button = btnRepeat,
+            mode = mode
         )
     }
 
     private fun updatePrimaryControlButton() {
-        if (shouldRestartQueue) {
-            btnPlayPause.setImageResource(R.drawable.ml_replay)
-            return
-        }
-        btnPlayPause.setImageResource(if (isCurrentlyPlaying) R.drawable.ml_pause else R.drawable.ml_play)
-    }
-
-    private fun formatDuration(durationMs: Long): String {
-        val minutes = (durationMs / 1000) / 60
-        val seconds = (durationMs / 1000) % 60
-        return String.format("%d:%02d", minutes, seconds)
-    }
-
-    private fun dp(value: Float): Float {
-        return value * resources.displayMetrics.density
+        PlaybackControlUi.bindPrimaryControl(
+            button = btnPlayPause,
+            isPlaying = isCurrentlyPlaying,
+            shouldRestartQueue = shouldRestartQueue
+        )
     }
 
     private fun tintSearchStartIcon() {

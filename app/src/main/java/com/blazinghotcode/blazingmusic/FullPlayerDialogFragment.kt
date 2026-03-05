@@ -1,6 +1,5 @@
 package com.blazinghotcode.blazingmusic
 
-import android.content.res.ColorStateList
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -14,8 +13,6 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
-import androidx.core.content.ContextCompat
-import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -82,7 +79,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
             if (!isAdded) return
             val position = viewModel.getCurrentPosition()
             seekBar.progress = position.toInt()
-            tvCurrentTime.text = formatDuration(position)
+            tvCurrentTime.text = PlaybackTimeFormatter.formatDuration(position)
             handler.postDelayed(this, 1000)
         }
     }
@@ -357,7 +354,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
 
         viewModel.duration.observe(viewLifecycleOwner) { duration ->
             seekBar.max = duration.toInt().coerceAtLeast(0)
-            tvTotalTime.text = formatDuration(duration)
+            tvTotalTime.text = PlaybackTimeFormatter.formatDuration(duration)
         }
 
         viewModel.isShuffleEnabled.observe(viewLifecycleOwner) { enabled ->
@@ -561,41 +558,27 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
     }
 
     private fun updatePrimaryControlButton() {
-        if (shouldRestartQueue) {
-            btnPlayPause.setImageResource(R.drawable.ml_replay)
-            return
-        }
-        btnPlayPause.setImageResource(if (isCurrentlyPlaying) R.drawable.ml_pause else R.drawable.ml_play)
+        PlaybackControlUi.bindPrimaryControl(
+            button = btnPlayPause,
+            isPlaying = isCurrentlyPlaying,
+            shouldRestartQueue = shouldRestartQueue
+        )
     }
 
     private fun updateShuffleUi(isEnabled: Boolean) {
-        btnShuffle.setImageResource(if (isEnabled) R.drawable.ml_shuffle_on else R.drawable.ml_shuffle)
-        val tint = if (isEnabled) R.color.accent_lavender else R.color.text_secondary
-        ImageViewCompat.setImageTintList(
-            btnShuffle,
-            ColorStateList.valueOf(ContextCompat.getColor(requireContext(), tint))
+        PlaybackControlUi.bindShuffleControl(
+            context = requireContext(),
+            button = btnShuffle,
+            isEnabled = isEnabled
         )
     }
 
     private fun updateRepeatUi(mode: Int) {
-        val icon = when (mode) {
-            1 -> R.drawable.ml_repeat_on
-            2 -> R.drawable.ml_repeat_one_on
-            else -> R.drawable.ml_repeat
-        }
-        btnRepeat.setImageResource(icon)
-        val tint = if (mode == 0) R.color.text_secondary else R.color.accent_lavender
-        ImageViewCompat.setImageTintList(
-            btnRepeat,
-            ColorStateList.valueOf(ContextCompat.getColor(requireContext(), tint))
+        PlaybackControlUi.bindRepeatControl(
+            context = requireContext(),
+            button = btnRepeat,
+            mode = mode
         )
-    }
-
-    private fun formatDuration(durationMs: Long): String {
-        val safeDuration = durationMs.coerceAtLeast(0L)
-        val minutes = (safeDuration / 1000) / 60
-        val seconds = (safeDuration / 1000) % 60
-        return String.format("%d:%02d", minutes, seconds)
     }
 
     private fun dp(value: Float): Float {
