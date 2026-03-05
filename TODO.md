@@ -24,7 +24,7 @@
 22. [x] Request and handle POST_NOTIFICATIONS permission on Android 13+.
 23. [x] Debounce search input for smoother filtering on large libraries.
 24. [x] Add fast-scrolling and alphabetical indexing in song list.
-25. [ ] Modernize the full UI/UX and visual design so the app looks polished and production-ready.
+25. [x] Modernize the full UI/UX and visual design so the app looks polished and production-ready.
 26. [ ] Show empty/error states (no songs, permission denied, load failure).
 27. [ ] Replace deprecated adapterPosition usage in SongAdapter.
 28. [ ] Add developer-facing code documentation for architecture, playback flow, and key components.

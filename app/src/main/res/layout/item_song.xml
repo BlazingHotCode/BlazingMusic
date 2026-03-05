@@ -6,11 +6,11 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginStart="12dp"
-    android:layout_marginTop="5dp"
+    android:layout_marginTop="6dp"
     android:layout_marginEnd="12dp"
-    android:layout_marginBottom="5dp"
+    android:layout_marginBottom="6dp"
     android:background="@drawable/bg_song_item"
-    android:padding="11dp">
+    android:padding="12dp">
 
     <ImageView
         android:id="@+id/ivAlbumArt"
@@ -44,6 +44,7 @@
         android:maxLines="1"
         android:textColor="@color/text_primary"
         android:textSize="15sp"
+        android:letterSpacing="0.01"
         android:textStyle="bold"
         app:layout_constraintBottom_toTopOf="@id/tvArtist"
         app:layout_constraintEnd_toStartOf="@id/tvDuration"
@@ -61,6 +62,7 @@
         android:maxLines="1"
         android:textColor="@color/text_secondary"
         android:textSize="12sp"
+        android:letterSpacing="0.01"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toStartOf="@id/tvNowPlaying"
         app:layout_constraintStart_toEndOf="@id/ivAlbumArt"
