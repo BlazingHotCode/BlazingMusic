@@ -16,6 +16,7 @@ android {
     namespace = "com.blazinghotcode.blazingmusic"
     compileSdk = 35
     buildToolsVersion = "35.0.0"
+    testBuildType = "uitest"
 
     buildFeatures {
         viewBinding = true
@@ -30,6 +31,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testApplicationId = "com.blazinghotcode.blazingmusictest"
     }
 
     signingConfigs {
@@ -44,6 +46,19 @@ android {
     }
 
     buildTypes {
+        debug {
+            isMinifyEnabled = false
+        }
+
+        create("uitest") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".uitest"
+            versionNameSuffix = "-uitest"
+            matchingFallbacks += listOf("debug")
+            isDebuggable = true
+            isMinifyEnabled = false
+        }
+
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
