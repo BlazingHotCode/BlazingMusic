@@ -41,6 +41,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MusicRepository(application)
     private val youTubeApiClient = YouTubeApiClient()
     private var exoPlayer: ExoPlayer? = null
+    private var listenerAttachedPlayer: ExoPlayer? = null
     private var playbackSettings: PlaybackSettings = PlaybackSettings(
         defaultShuffleEnabled = false,
         defaultRepeatMode = 0,
@@ -91,6 +92,54 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var currentQueueIndexInternal = -1
     private var playlistsInternal: List<Playlist> = emptyList()
     private val retryingYouTubeVideoIds = mutableSetOf<String>()
+    private val playbackListener = object : Player.Listener {
+        override fun onIsPlayingChanged(playing: Boolean) {
+            _isPlaying.postValue(playing)
+            refreshPlaybackNotification()
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            val player = exoPlayer ?: return
+            if (playbackState == Player.STATE_READY) {
+                _duration.postValue(player.duration)
+            }
+            if (playbackState == Player.STATE_ENDED) {
+                handleTrackEnded()
+            }
+            refreshPlaybackNotification()
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val previousSong = _currentSong.value
+            val path = mediaItem?.localConfiguration?.uri?.toString() ?: return
+            val index = activeQueue.indexOfFirst { it.path == path }
+            if (index !in activeQueue.indices) return
+            val transitionedSong = activeQueue[index]
+            PlaybackAnalyticsLogger.logTransition(
+                reason = reason,
+                fromSong = previousSong,
+                toSong = transitionedSong,
+                toIndex = index
+            )
+            if (index != currentQueueIndexInternal) {
+                currentQueueIndexInternal = index
+                _currentQueueIndex.postValue(index)
+                _currentSong.postValue(transitionedSong)
+                persistQueueState()
+            }
+            refreshPlaybackNotification()
+        }
+
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            PlaybackAnalyticsLogger.logPlaybackError(
+                error = error,
+                song = _currentSong.value,
+                queueIndex = currentQueueIndexInternal,
+                queueSize = activeQueue.size
+            )
+            maybeRecoverYouTubeSourceError(error)
+        }
+    }
 
     init {
         playbackSettings = PlaybackSettingsStore.read(application.applicationContext)
@@ -106,57 +155,22 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun initializePlayer() {
         val app = getApplication<Application>()
         app.startService(Intent(app, MusicService::class.java))
-        exoPlayer = SharedPlayer.getOrCreate(app).apply {
-            val player = this
-            applyPlaybackAudioOptions(player, playbackSettings)
-            addListener(object : Player.Listener {
-                override fun onIsPlayingChanged(playing: Boolean) {
-                    _isPlaying.postValue(playing)
-                    refreshPlaybackNotification()
-                }
+        bindToSharedPlayer()
+    }
 
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) {
-                        _duration.postValue(player.duration)
-                    }
-                    if (playbackState == Player.STATE_ENDED) {
-                        handleTrackEnded()
-                    }
-                    refreshPlaybackNotification()
-                }
-
-                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                    val previousSong = _currentSong.value
-                    val path = mediaItem?.localConfiguration?.uri?.toString() ?: return
-                    val index = activeQueue.indexOfFirst { it.path == path }
-                    if (index !in activeQueue.indices) return
-                    val transitionedSong = activeQueue[index]
-                    PlaybackAnalyticsLogger.logTransition(
-                        reason = reason,
-                        fromSong = previousSong,
-                        toSong = transitionedSong,
-                        toIndex = index
-                    )
-                    if (index != currentQueueIndexInternal) {
-                        currentQueueIndexInternal = index
-                        _currentQueueIndex.postValue(index)
-                        _currentSong.postValue(transitionedSong)
-                        persistQueueState()
-                    }
-                    refreshPlaybackNotification()
-                }
-
-                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    PlaybackAnalyticsLogger.logPlaybackError(
-                        error = error,
-                        song = _currentSong.value,
-                        queueIndex = currentQueueIndexInternal,
-                        queueSize = activeQueue.size
-                    )
-                    maybeRecoverYouTubeSourceError(error)
-                }
-            })
+    private fun bindToSharedPlayer(): ExoPlayer {
+        val app = getApplication<Application>()
+        val shared = SharedPlayer.getOrCreate(app)
+        if (exoPlayer !== shared) {
+            exoPlayer = shared
+            applyPlaybackAudioOptions(shared, playbackSettings)
         }
+        if (listenerAttachedPlayer !== shared) {
+            listenerAttachedPlayer?.removeListener(playbackListener)
+            shared.addListener(playbackListener)
+            listenerAttachedPlayer = shared
+        }
+        return shared
     }
 
     private fun maybeRecoverYouTubeSourceError(error: androidx.media3.common.PlaybackException) {
@@ -284,7 +298,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startPlayback() {
-        exoPlayer?.let { player ->
+        bindToSharedPlayer().let { player ->
             val mediaItems = activeQueue.map { mediaItemForSong(it) }
             val startIndex = currentQueueIndexInternal.coerceIn(0, mediaItems.lastIndex)
             player.setMediaItems(mediaItems, startIndex, 0L)
@@ -294,11 +308,30 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playPause() {
-        exoPlayer?.let { player ->
+        bindToSharedPlayer().let { player ->
             if (player.isPlaying) {
                 player.pause()
             } else {
-                player.play()
+                when (player.playbackState) {
+                    Player.STATE_IDLE -> {
+                        if (player.mediaItemCount == 0 && activeQueue.isNotEmpty()) {
+                            val mediaItems = activeQueue.map { mediaItemForSong(it) }
+                            val startIndex = currentQueueIndexInternal
+                                .coerceIn(0, mediaItems.lastIndex.coerceAtLeast(0))
+                            player.setMediaItems(mediaItems, startIndex, getCurrentPosition())
+                        }
+                        player.prepare()
+                        player.play()
+                    }
+                    Player.STATE_ENDED -> {
+                        val index = currentQueueIndexInternal.takeIf { it in activeQueue.indices } ?: 0
+                        if (activeQueue.isNotEmpty()) {
+                            player.seekToDefaultPosition(index)
+                        }
+                        player.play()
+                    }
+                    else -> player.play()
+                }
             }
             persistPlaybackPosition()
             refreshPlaybackNotification()
@@ -511,6 +544,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         applyQueueMutation(newQueue.toMutableList(), newCurrentIndex)
     }
 
+    fun replaceUpcomingQueue(newUpcoming: List<Song>) {
+        if (activeQueue.isEmpty()) return
+        val currentIndex = currentQueueIndexInternal
+        if (currentIndex !in activeQueue.indices) return
+        val prefix = activeQueue.take(currentIndex + 1)
+        val updatedQueue = (prefix + newUpcoming).distinctBy { it.path }
+        applyQueueMutation(updatedQueue.toMutableList(), currentIndex)
+    }
+
     fun createPlaylist(name: String): Playlist? {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return null
@@ -643,6 +685,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         mutableQueue: MutableList<Song>,
         updatedCurrentIndex: Int = currentQueueIndexInternal
     ) {
+        val currentPosition = getCurrentPosition().coerceAtLeast(0L)
+        val wasPlaying = exoPlayer?.isPlaying == true
         activeQueue = mutableQueue.toList()
         _queue.value = activeQueue
 
@@ -660,6 +704,22 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             val queueSongIds = activeQueue.map { it.id }.toSet()
             normalQueue = normalQueue.filter { it.id in queueSongIds }
         }
+
+        syncPlayerQueueWithActiveQueue(
+            positionMs = currentPosition,
+            keepPlaying = wasPlaying
+        )
+    }
+
+    private fun syncPlayerQueueWithActiveQueue(positionMs: Long, keepPlaying: Boolean) {
+        if (activeQueue.isEmpty()) return
+        val player = bindToSharedPlayer()
+        val mediaItems = activeQueue.map { mediaItemForSong(it) }
+        val startIndex = currentQueueIndexInternal.coerceIn(0, mediaItems.lastIndex)
+        val wasPlayWhenReady = player.playWhenReady || keepPlaying
+        player.setMediaItems(mediaItems, startIndex, positionMs.coerceAtLeast(0L))
+        player.prepare()
+        player.playWhenReady = wasPlayWhenReady
     }
 
     private fun persistQueueState(positionOverrideMs: Long? = null) {
@@ -677,6 +737,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         .put("path", song.path)
                         .put("album_art_uri", song.albumArtUri)
                         .put("source_video_id", song.sourceVideoId)
+                        .put("source_playlist_id", song.sourcePlaylistId)
+                        .put("source_playlist_set_video_id", song.sourcePlaylistSetVideoId)
+                        .put("source_params", song.sourceParams)
+                        .put("source_index", song.sourceIndex)
                 )
             }
         }
@@ -872,7 +936,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                                 dateAddedSeconds = json.optLong("date_added_seconds", 0L),
                                 path = path,
                                 albumArtUri = json.optString("album_art_uri", "").ifBlank { null },
-                                sourceVideoId = json.optString("source_video_id", "").ifBlank { null }
+                                sourceVideoId = json.optString("source_video_id", "").ifBlank { null },
+                                sourcePlaylistId = json.optString("source_playlist_id", "").ifBlank { null },
+                                sourcePlaylistSetVideoId = json.optString("source_playlist_set_video_id", "").ifBlank { null },
+                                sourceParams = json.optString("source_params", "").ifBlank { null },
+                                sourceIndex = if (json.has("source_index") && !json.isNull("source_index")) {
+                                    json.optInt("source_index")
+                                } else {
+                                    null
+                                }
                             )
                         )
                     }
@@ -924,6 +996,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        listenerAttachedPlayer?.removeListener(playbackListener)
+        listenerAttachedPlayer = null
         exoPlayer = null
     }
 }

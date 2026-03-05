@@ -410,6 +410,18 @@ class MainActivity : AppCompatActivity() {
         songs.forEach { viewModel.addSongToQueue(it) }
     }
 
+    fun addSongToCurrentQueue(song: Song) {
+        viewModel.addSongToQueue(song)
+    }
+
+    fun addSongToPlayNext(song: Song) {
+        viewModel.addSongToPlayNext(song)
+    }
+
+    fun replaceUpcomingQueue(songs: List<Song>) {
+        viewModel.replaceUpcomingQueue(songs)
+    }
+
     private fun setupMiniPlayerExpandGesture(onOpen: () -> Unit) {
         val touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
         playerLayout.setOnTouchListener { _, event ->
