@@ -5,6 +5,12 @@
       "label": "Clean",
       "type": "shell",
       "command": "./gradlew clean",
+      "options": {
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+          "PATH": "/usr/lib/jvm/java-17-openjdk-amd64/bin:${env:PATH}"
+        }
+      },
       "group": "build",
       "problemMatcher": []
     },
@@ -12,6 +18,12 @@
       "label": "Build Debug APK",
       "type": "shell",
       "command": "./gradlew assembleDebug",
+      "options": {
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+          "PATH": "/usr/lib/jvm/java-17-openjdk-amd64/bin:${env:PATH}"
+        }
+      },
       "group": "build",
       "problemMatcher": ["$gradle"]
     },
@@ -19,6 +31,12 @@
       "label": "Build Release APK",
       "type": "shell",
       "command": "./gradlew assembleRelease",
+      "options": {
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+          "PATH": "/usr/lib/jvm/java-17-openjdk-amd64/bin:${env:PATH}"
+        }
+      },
       "group": "build",
       "problemMatcher": ["$gradle"]
     },
@@ -26,6 +44,12 @@
       "label": "Sync Gradle",
       "type": "shell",
       "command": "./gradlew dependencies",
+      "options": {
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+          "PATH": "/usr/lib/jvm/java-17-openjdk-amd64/bin:${env:PATH}"
+        }
+      },
       "problemMatcher": ["$gradle"]
     },
     {
@@ -38,6 +62,12 @@
       "label": "Build & Install Debug",
       "type": "shell",
       "command": "./gradlew assembleDebug installDebug",
+      "options": {
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+          "PATH": "/usr/lib/jvm/java-17-openjdk-amd64/bin:${env:PATH}"
+        }
+      },
       "group": {
         "kind": "build",
         "isDefault": true
@@ -48,6 +78,12 @@
       "label": "Run App (Debug)",
       "type": "shell",
       "command": "./gradlew installDebug && /home/blazinghg/Android/Sdk/platform-tools/adb shell am start -n com.blazinghotcode.blazingmusic/.MainActivity",
+      "options": {
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+          "PATH": "/usr/lib/jvm/java-17-openjdk-amd64/bin:${env:PATH}"
+        }
+      },
       "problemMatcher": []
     },
     {
