@@ -2,7 +2,6 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_app_shell">
@@ -39,178 +38,6 @@
         app:layout_constraintStart_toEndOf="@id/btnBack"
         app:layout_constraintTop_toTopOf="@id/btnBack" />
 
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/browseHeaderContainer"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="14dp"
-        android:layout_marginTop="12dp"
-        android:layout_marginEnd="14dp"
-        android:background="@drawable/bg_song_item"
-        android:padding="12dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/btnBack">
-
-        <ImageView
-            android:id="@+id/ivArtistHeroArt"
-            android:layout_width="0dp"
-            android:layout_height="220dp"
-            android:background="@drawable/bg_song_item"
-            android:contentDescription="Artist artwork"
-            android:scaleType="centerCrop"
-            android:visibility="gone"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <TextView
-            android:id="@+id/tvArtistHeroTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:textColor="@color/text_primary"
-            android:textSize="30sp"
-            android:textStyle="bold"
-            android:visibility="gone"
-            app:layout_constraintEnd_toEndOf="@id/ivArtistHeroArt"
-            app:layout_constraintStart_toStartOf="@id/ivArtistHeroArt"
-            app:layout_constraintTop_toBottomOf="@id/ivArtistHeroArt"
-            tools:text="Artist Name" />
-
-        <TextView
-            android:id="@+id/tvArtistHeroSubtitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:textColor="@color/text_secondary"
-            android:textSize="13sp"
-            android:visibility="gone"
-            app:layout_constraintEnd_toEndOf="@id/tvArtistHeroTitle"
-            app:layout_constraintStart_toStartOf="@id/tvArtistHeroTitle"
-            app:layout_constraintTop_toBottomOf="@id/tvArtistHeroTitle"
-            tools:text="artist • YouTube Music" />
-
-        <LinearLayout
-            android:id="@+id/artistActionRow"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="horizontal"
-            android:visibility="gone"
-            app:layout_constraintEnd_toEndOf="@id/tvArtistHeroSubtitle"
-            app:layout_constraintStart_toStartOf="@id/tvArtistHeroSubtitle"
-            app:layout_constraintTop_toBottomOf="@id/tvArtistHeroSubtitle">
-
-            <Button
-                android:id="@+id/btnArtistRadio"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_weight="1"
-                android:text="Radio"
-                android:textAllCaps="false" />
-
-            <Button
-                android:id="@+id/btnArtistShuffle"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Shuffle"
-                android:textAllCaps="false" />
-        </LinearLayout>
-
-        <ImageView
-            android:id="@+id/ivBrowseHeaderArt"
-            android:layout_width="84dp"
-            android:layout_height="84dp"
-            android:background="@drawable/bg_song_item"
-            android:contentDescription="Browse artwork"
-            android:scaleType="centerCrop"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <TextView
-            android:id="@+id/tvBrowseHeaderTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="4dp"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:textColor="@color/text_primary"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toEndOf="@id/ivBrowseHeaderArt"
-            app:layout_constraintTop_toTopOf="@id/ivBrowseHeaderArt"
-            tools:text="Artist Name" />
-
-        <TextView
-            android:id="@+id/tvBrowseHeaderSubtitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginTop="8dp"
-            android:layout_marginEnd="4dp"
-            android:ellipsize="end"
-            android:maxLines="3"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toEndOf="@id/ivBrowseHeaderArt"
-            app:layout_constraintTop_toBottomOf="@id/tvBrowseHeaderTitle"
-            tools:text="artist • YouTube Music" />
-
-        <LinearLayout
-            android:id="@+id/browseActionRow"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginTop="10dp"
-            android:orientation="horizontal"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toEndOf="@id/ivBrowseHeaderArt"
-            app:layout_constraintTop_toBottomOf="@id/tvBrowseHeaderSubtitle">
-
-            <Button
-                android:id="@+id/btnPlayAll"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:layout_weight="1"
-                android:text="Play"
-                android:textAllCaps="false" />
-
-            <Button
-                android:id="@+id/btnShuffleAll"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Shuffle"
-                android:textAllCaps="false" />
-        </LinearLayout>
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
-
-    <TextView
-        android:id="@+id/tvState"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="18dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginEnd="18dp"
-        android:textColor="@color/text_secondary"
-        android:textSize="12sp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/browseHeaderContainer" />
-
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvBrowseResults"
         android:layout_width="0dp"
@@ -221,6 +48,6 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tvState" />
+        app:layout_constraintTop_toBottomOf="@id/btnBack" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

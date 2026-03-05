@@ -38,9 +38,21 @@ class YouTubeApiClient {
     suspend fun browseCollection(
         browseId: String,
         params: String? = null,
-        maxResults: Int = 80
+        maxResults: Int = 300
     ): List<YouTubeVideo> {
-        if (browseId.isBlank()) return emptyList()
+        return browseCollectionPage(
+            browseId = browseId,
+            params = params,
+            maxResults = maxResults
+        ).items
+    }
+
+    suspend fun browseCollectionPage(
+        browseId: String,
+        params: String? = null,
+        maxResults: Int = 300
+    ): YouTubeBrowsePage {
+        if (browseId.isBlank()) return YouTubeBrowsePage(emptyList())
         val body = JSONObject()
             .put("context", contextObject())
             .put("browseId", browseId)
@@ -48,20 +60,62 @@ class YouTubeApiClient {
                 if (!params.isNullOrBlank()) put("params", params)
             }
 
-        return post("browse", body)
-            ?.let { parseShelfItems(it).take(maxResults.coerceIn(1, 300)) }
-            .orEmpty()
+        val root = post("browse", body) ?: return YouTubeBrowsePage(emptyList())
+        return YouTubeBrowsePage(
+            items = parseShelfItems(root).take(maxResults.coerceIn(1, 2000)),
+            artistInfo = parseArtistInfo(root)
+        )
     }
 
     suspend fun resolveAudioStreamUrl(videoId: String): String? {
         if (videoId.isBlank()) return null
-        YouTubeStreamResolver.resolveBestAudioUrl(videoId)?.let { extracted ->
-            Log.i(TAG, "Resolved stream with NewPipe extractor for $videoId")
-            return extracted
+
+        // Metrolist-style primary path: extractor-based stream resolution first.
+        val extractorCandidate = YouTubeStreamResolver.resolveBestAudioUrl(videoId)
+        if (!extractorCandidate.isNullOrBlank() && isStreamPlayable(extractorCandidate)) {
+            Log.i(TAG, "Resolved playable stream with extractor primary path for $videoId")
+            return extractorCandidate
         }
 
+        val webRemixCandidate = resolveAudioStreamUrlWithClient(
+            videoId = videoId,
+            context = contextObject(),
+            clientName = WEB_REMIX_CLIENT_NAME,
+            clientVersion = WEB_REMIX_CLIENT_VERSION,
+            clientId = WEB_REMIX_CLIENT_ID,
+            userAgent = USER_AGENT_WEB
+        )
+        if (!webRemixCandidate.isNullOrBlank() && isStreamPlayable(webRemixCandidate)) {
+            Log.i(TAG, "Resolved playable stream with WEB_REMIX player for $videoId")
+            return webRemixCandidate
+        }
+
+        val androidCandidate = resolveAudioStreamUrlWithClient(
+            videoId = videoId,
+            context = contextObjectAndroid(),
+            clientName = ANDROID_CLIENT_NAME,
+            clientVersion = ANDROID_CLIENT_VERSION,
+            clientId = ANDROID_CLIENT_ID,
+            userAgent = USER_AGENT_ANDROID
+        )
+        if (!androidCandidate.isNullOrBlank() && isStreamPlayable(androidCandidate)) {
+            Log.i(TAG, "Resolved playable stream with ANDROID player for $videoId")
+            return androidCandidate
+        }
+
+        return null
+    }
+
+    private suspend fun resolveAudioStreamUrlWithClient(
+        videoId: String,
+        context: JSONObject,
+        clientName: String,
+        clientVersion: String,
+        clientId: String,
+        userAgent: String
+    ): String? {
         val body = JSONObject()
-            .put("context", contextObjectAndroid())
+            .put("context", context)
             .put("videoId", videoId)
             .put("playbackContext", JSONObject().put(
                 "contentPlaybackContext",
@@ -73,14 +127,15 @@ class YouTubeApiClient {
         val response = post(
             path = "player",
             body = body,
-            clientName = ANDROID_CLIENT_NAME,
-            clientVersion = ANDROID_CLIENT_VERSION,
-            clientId = ANDROID_CLIENT_ID,
-            userAgent = USER_AGENT_ANDROID
+            clientName = clientName,
+            clientVersion = clientVersion,
+            clientId = clientId,
+            userAgent = userAgent
         ) ?: return null
+
         val playability = response.optJSONObject("playabilityStatus")?.optString("status", "UNKNOWN").orEmpty()
         if (playability != "OK") {
-            Log.w(TAG, "Player resolve not playable for $videoId: $playability")
+            Log.w(TAG, "Player resolve not playable for $videoId using $clientName: $playability")
             return null
         }
         val streamingData = response.optJSONObject("streamingData") ?: return null
@@ -210,14 +265,18 @@ class YouTubeApiClient {
     private fun parseShelfItems(root: JSONObject): List<YouTubeVideo> {
         val out = mutableListOf<YouTubeVideo>()
         val seen = HashSet<String>()
-        collectShelfRenderers(root) { renderer, shelfTitle ->
-            val item = mapRendererToItem(renderer, shelfTitle) ?: return@collectShelfRenderers
+        collectShelfRenderers(root) { renderer, shelfTitle, shelfBrowseId, shelfBrowseParams ->
+            val item = mapRendererToItem(renderer, shelfTitle, shelfBrowseId, shelfBrowseParams)
+                ?: return@collectShelfRenderers
             if (seen.add(item.id)) out += item
         }
         return out
     }
 
-    private fun collectShelfRenderers(root: JSONObject, block: (JSONObject, String?) -> Unit) {
+    private fun collectShelfRenderers(
+        root: JSONObject,
+        block: (JSONObject, String?, String?, String?) -> Unit
+    ) {
         // Primary response shape for search/browse shelves.
         val contents = root
             .optJSONObject("contents")
@@ -233,52 +292,150 @@ class YouTubeApiClient {
             for (i in 0 until contents.length()) {
                 val shelf = contents.optJSONObject(i)?.optJSONObject("musicShelfRenderer") ?: continue
                 val shelfTitle = shelf.optJSONObject("title")?.optJSONArray("runs")?.let(::joinRunsText)
+                val shelfEndpoint = extractShelfBrowseEndpoint(shelf)
                 val shelfItems = shelf.optJSONArray("contents") ?: continue
                 for (j in 0 until shelfItems.length()) {
                     val renderer = shelfItems.optJSONObject(j)?.optJSONObject("musicResponsiveListItemRenderer") ?: continue
-                    block(renderer, shelfTitle)
+                    block(renderer, shelfTitle, shelfEndpoint.first, shelfEndpoint.second)
                 }
             }
-            return
+            // Continue with recursive walk for carousel/two-row sections.
         }
 
         // Browse/continuation shapes can be nested, so fall back to recursive walk.
-        collectRenderersRecursively(root, null, block)
+        collectRenderersRecursively(root, null, null, null, block)
     }
 
-    private fun collectRenderersRecursively(node: Any?, shelfTitle: String?, block: (JSONObject, String?) -> Unit) {
+    private fun collectRenderersRecursively(
+        node: Any?,
+        shelfTitle: String?,
+        shelfBrowseId: String?,
+        shelfBrowseParams: String?,
+        block: (JSONObject, String?, String?, String?) -> Unit
+    ) {
         when (node) {
             is JSONObject -> {
                 node.optJSONObject("musicShelfRenderer")?.let { shelf ->
                     val title = shelf.optJSONObject("title")?.optJSONArray("runs")?.let(::joinRunsText)
+                    val endpoint = extractShelfBrowseEndpoint(shelf)
                     val shelfItems = shelf.optJSONArray("contents")
                     if (shelfItems != null) {
                         for (j in 0 until shelfItems.length()) {
                             val renderer = shelfItems.optJSONObject(j)?.optJSONObject("musicResponsiveListItemRenderer") ?: continue
-                            block(renderer, title)
+                            block(renderer, title, endpoint.first, endpoint.second)
+                        }
+                    }
+                }
+
+                node.optJSONObject("musicCarouselShelfRenderer")?.let { shelf ->
+                    val title = shelf.optJSONObject("header")
+                        ?.optJSONObject("musicCarouselShelfBasicHeaderRenderer")
+                        ?.optJSONObject("title")
+                        ?.optJSONArray("runs")
+                        ?.let(::joinRunsText)
+                    val endpoint = extractShelfBrowseEndpoint(shelf)
+                    val carouselItems = shelf.optJSONArray("contents")
+                    if (carouselItems != null) {
+                        for (j in 0 until carouselItems.length()) {
+                            val item = carouselItems.optJSONObject(j) ?: continue
+                            item.optJSONObject("musicResponsiveListItemRenderer")?.let { renderer ->
+                                block(renderer, title, endpoint.first, endpoint.second)
+                            }
+                            item.optJSONObject("musicTwoRowItemRenderer")?.let { twoRow ->
+                                mapTwoRowRendererToResponsiveLike(twoRow)?.let { mapped ->
+                                    block(mapped, title, endpoint.first, endpoint.second)
+                                }
+                            }
                         }
                     }
                 }
 
                 node.optJSONObject("musicResponsiveListItemRenderer")?.let { renderer ->
-                    block(renderer, shelfTitle)
+                    block(renderer, shelfTitle, shelfBrowseId, shelfBrowseParams)
                 }
 
                 val iterator = node.keys()
                 while (iterator.hasNext()) {
                     val key = iterator.next()
-                    collectRenderersRecursively(node.opt(key), shelfTitle, block)
+                    collectRenderersRecursively(
+                        node.opt(key),
+                        shelfTitle,
+                        shelfBrowseId,
+                        shelfBrowseParams,
+                        block
+                    )
                 }
             }
             is JSONArray -> {
                 for (i in 0 until node.length()) {
-                    collectRenderersRecursively(node.opt(i), shelfTitle, block)
+                    collectRenderersRecursively(
+                        node.opt(i),
+                        shelfTitle,
+                        shelfBrowseId,
+                        shelfBrowseParams,
+                        block
+                    )
                 }
             }
         }
     }
 
-    private fun mapRendererToItem(renderer: JSONObject, shelfTitle: String?): YouTubeVideo? {
+    private fun mapTwoRowRendererToResponsiveLike(twoRow: JSONObject): JSONObject? {
+        val titleRuns = twoRow
+            .optJSONObject("title")
+            ?.optJSONArray("runs")
+            ?: return null
+
+        val subtitleRuns = twoRow
+            .optJSONObject("subtitle")
+            ?.optJSONArray("runs")
+            ?: JSONArray()
+
+        val nav = twoRow.optJSONObject("navigationEndpoint") ?: JSONObject()
+        val thumbSource = twoRow.optJSONObject("thumbnailRenderer")
+            ?.optJSONObject("musicThumbnailRenderer")
+            ?.optJSONObject("thumbnail")
+            ?.optJSONArray("thumbnails")
+            ?: JSONArray()
+
+        // Build a minimal compatible structure for mapRendererToItem.
+        return JSONObject().apply {
+            put(
+                "flexColumns",
+                JSONArray()
+                    .put(
+                        JSONObject().put(
+                            "musicResponsiveListItemFlexColumnRenderer",
+                            JSONObject().put("text", JSONObject().put("runs", titleRuns))
+                        )
+                    )
+                    .put(
+                        JSONObject().put(
+                            "musicResponsiveListItemFlexColumnRenderer",
+                            JSONObject().put("text", JSONObject().put("runs", subtitleRuns))
+                        )
+                    )
+            )
+            put("navigationEndpoint", nav)
+            put(
+                "thumbnail",
+                JSONObject().put(
+                    "musicThumbnailRenderer",
+                    JSONObject().put(
+                        "thumbnail",
+                        JSONObject().put("thumbnails", thumbSource)
+                    )
+                )
+            )
+        }
+    }
+
+    private fun mapRendererToItem(
+        renderer: JSONObject,
+        shelfTitle: String?,
+        shelfBrowseId: String?,
+        shelfBrowseParams: String?
+    ): YouTubeVideo? {
         val titleRuns = renderer
             .optJSONArray("flexColumns")
             ?.optJSONObject(0)
@@ -317,6 +474,8 @@ class YouTubeApiClient {
             channelTitle = decodeHtmlEntities(subtitle),
             thumbnailUrl = thumb,
             sectionTitle = shelfTitle?.let(::decodeHtmlEntities),
+            sectionBrowseId = shelfBrowseId,
+            sectionBrowseParams = shelfBrowseParams,
             type = type,
             videoId = videoId,
             browseId = browseId,
@@ -440,6 +599,32 @@ class YouTubeApiClient {
         return null
     }
 
+    private fun extractShelfBrowseEndpoint(shelfRenderer: JSONObject): Pair<String?, String?> {
+        val header = shelfRenderer.optJSONObject("header")
+        val basicHeader = header?.optJSONObject("musicCarouselShelfBasicHeaderRenderer")
+        val endpointFromMoreButton = basicHeader
+            ?.optJSONObject("moreContentButton")
+            ?.optJSONObject("buttonRenderer")
+            ?.optJSONObject("navigationEndpoint")
+            ?.optJSONObject("browseEndpoint")
+
+        val endpointFromTitleRun = basicHeader
+            ?.optJSONObject("title")
+            ?.optJSONArray("runs")
+            ?.optJSONObject(0)
+            ?.optJSONObject("navigationEndpoint")
+            ?.optJSONObject("browseEndpoint")
+
+        val endpointFromBottom = shelfRenderer
+            .optJSONObject("bottomEndpoint")
+            ?.optJSONObject("browseEndpoint")
+
+        val endpoint = endpointFromMoreButton ?: endpointFromTitleRun ?: endpointFromBottom
+        val browseId = endpoint?.optString("browseId", "")?.trim().orEmpty()
+        val browseParams = endpoint?.optString("params", "")?.trim().orEmpty()
+        return browseId.ifBlank { null } to browseParams.ifBlank { null }
+    }
+
     private fun pickBestAudioFormat(
         formats: JSONArray,
         preferMimePrefix: String? = null
@@ -491,6 +676,93 @@ class YouTubeApiClient {
     private fun decodeHtmlEntities(raw: String): String {
         if (raw.isBlank()) return raw
         return HtmlCompat.fromHtml(raw, HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
+    }
+
+    private fun parseArtistInfo(root: JSONObject): YouTubeArtistInfo? {
+        val header = root.optJSONObject("header") ?: return null
+        val description = findTextByKeys(header, setOf("description", "descriptionText"))
+        val subscriberCount = findTextByKeys(header, setOf("subscriberCountText", "subscriptionsCountText"))
+            ?: findTextContaining(header, listOf("subscriber"))
+        val monthlyListeners = findTextByKeys(header, setOf("monthlyListenerCount", "monthlyListeners"))
+            ?: findTextContaining(header, listOf("monthly", "listener"))
+
+        if (description.isNullOrBlank() && subscriberCount.isNullOrBlank() && monthlyListeners.isNullOrBlank()) {
+            return null
+        }
+        return YouTubeArtistInfo(
+            description = description?.takeIf { it.isNotBlank() },
+            subscriberCount = subscriberCount?.takeIf { it.isNotBlank() },
+            monthlyListeners = monthlyListeners?.takeIf { it.isNotBlank() }
+        )
+    }
+
+    private fun findTextByKeys(node: Any?, keys: Set<String>): String? {
+        when (node) {
+            is JSONObject -> {
+                val iterator = node.keys()
+                while (iterator.hasNext()) {
+                    val key = iterator.next()
+                    val value = node.opt(key)
+                    if (key in keys) {
+                        extractText(value)?.let { if (it.isNotBlank()) return it }
+                    }
+                    findTextByKeys(value, keys)?.let { return it }
+                }
+            }
+            is JSONArray -> {
+                for (i in 0 until node.length()) {
+                    findTextByKeys(node.opt(i), keys)?.let { return it }
+                }
+            }
+        }
+        return null
+    }
+
+    private fun findTextContaining(node: Any?, requiredTerms: List<String>): String? {
+        val texts = mutableListOf<String>()
+        collectTexts(node, texts)
+        return texts.firstOrNull { text ->
+            requiredTerms.all { term -> text.contains(term, ignoreCase = true) }
+        }
+    }
+
+    private fun collectTexts(node: Any?, out: MutableList<String>) {
+        when (node) {
+            is JSONObject -> {
+                extractText(node)?.let { if (it.isNotBlank()) out += it }
+                val iterator = node.keys()
+                while (iterator.hasNext()) {
+                    collectTexts(node.opt(iterator.next()), out)
+                }
+            }
+            is JSONArray -> {
+                for (i in 0 until node.length()) {
+                    collectTexts(node.opt(i), out)
+                }
+            }
+        }
+    }
+
+    private fun extractText(value: Any?): String? {
+        return when (value) {
+            is JSONObject -> {
+                value.optString("simpleText", "").takeIf { it.isNotBlank() }?.let(::decodeHtmlEntities)
+                    ?: value.optJSONArray("runs")
+                        ?.let(::joinRunsText)
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(::decodeHtmlEntities)
+            }
+            is JSONArray -> {
+                val text = StringBuilder()
+                for (i in 0 until value.length()) {
+                    val chunk = extractText(value.opt(i)).orEmpty()
+                    if (chunk.isNotBlank()) text.append(chunk)
+                }
+                text.toString().trim().takeIf { it.isNotBlank() }?.let(::decodeHtmlEntities)
+            }
+            is String -> value.trim().takeIf { it.isNotBlank() }?.let(::decodeHtmlEntities)
+            else -> null
+        }
     }
 
     private companion object {

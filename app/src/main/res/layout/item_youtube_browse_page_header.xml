@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/browseHeaderContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="14dp"
+        android:background="@drawable/bg_song_item"
+        android:padding="12dp">
+
+        <ImageView
+            android:id="@+id/ivArtistHeroArt"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_song_item"
+            android:contentDescription="Artist artwork"
+            android:scaleType="centerCrop"
+            android:visibility="gone"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <View
+            android:id="@+id/artistHeroScrim"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_artist_hero_scrim"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/ivArtistHeroArt"
+            app:layout_constraintEnd_toEndOf="@id/ivArtistHeroArt"
+            app:layout_constraintStart_toStartOf="@id/ivArtistHeroArt"
+            app:layout_constraintTop_toTopOf="@id/ivArtistHeroArt" />
+
+        <TextView
+            android:id="@+id/tvArtistHeroTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="14dp"
+            android:layout_marginBottom="6dp"
+            android:ellipsize="end"
+            android:maxLines="3"
+            android:textColor="@color/text_primary"
+            android:textSize="34sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/tvArtistHeroSubtitle"
+            app:layout_constraintEnd_toEndOf="@id/ivArtistHeroArt"
+            app:layout_constraintStart_toStartOf="@id/ivArtistHeroArt" />
+
+        <TextView
+            android:id="@+id/tvArtistHeroSubtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="14dp"
+            android:layout_marginBottom="14dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/ivArtistHeroArt"
+            app:layout_constraintEnd_toEndOf="@id/tvArtistHeroTitle"
+            app:layout_constraintStart_toStartOf="@id/tvArtistHeroTitle" />
+
+        <LinearLayout
+            android:id="@+id/artistActionRow"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:layout_marginTop="14dp"
+            android:layout_marginEnd="14dp"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="@id/ivArtistHeroArt"
+            app:layout_constraintStart_toStartOf="@id/ivArtistHeroArt"
+            app:layout_constraintTop_toBottomOf="@id/ivArtistHeroArt">
+
+            <Button
+                android:id="@+id/btnArtistRadio"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_secondary_action_button"
+                android:text="Radio"
+                android:textAllCaps="false" />
+
+            <Button
+                android:id="@+id/btnArtistShuffle"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_secondary_action_button"
+                android:text="Shuffle"
+                android:textAllCaps="false" />
+
+            <ImageButton
+                android:id="@+id/btnArtistPageOptions"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_icon_button"
+                android:contentDescription="Artist page options"
+                android:padding="8dp"
+                android:src="@drawable/ml_settings"
+                app:tint="@color/text_primary" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/ivBrowseHeaderArt"
+            android:layout_width="84dp"
+            android:layout_height="84dp"
+            android:background="@drawable/bg_song_item"
+            android:contentDescription="Browse artwork"
+            android:scaleType="centerCrop"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/tvBrowseHeaderTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="4dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ivBrowseHeaderArt"
+            app:layout_constraintTop_toTopOf="@id/ivBrowseHeaderArt" />
+
+        <TextView
+            android:id="@+id/tvBrowseHeaderSubtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="4dp"
+            android:ellipsize="end"
+            android:maxLines="3"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ivBrowseHeaderArt"
+            app:layout_constraintTop_toBottomOf="@id/tvBrowseHeaderTitle" />
+
+        <LinearLayout
+            android:id="@+id/browseActionRow"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ivBrowseHeaderArt"
+            app:layout_constraintTop_toBottomOf="@id/tvBrowseHeaderSubtitle">
+
+            <Button
+                android:id="@+id/btnPlayAll"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:text="Play"
+                android:textAllCaps="false" />
+
+            <Button
+                android:id="@+id/btnShuffleAll"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Shuffle"
+                android:textAllCaps="false" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <LinearLayout
+        android:id="@+id/artistAboutContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="18dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="18dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="About artist"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvArtistSubscriberCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvArtistMonthlyListeners"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvArtistDescription"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:maxLines="5"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvState"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="18dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="18dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp" />
+
+</LinearLayout>

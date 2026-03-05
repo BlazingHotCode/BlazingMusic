@@ -269,6 +269,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
             duration = 0L,
             dateAddedSeconds = System.currentTimeMillis() / 1000,
             path = streamUrl,
+            sourceVideoId = videoId,
             albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(thumbnailUrl, videoId)
         )
     }

@@ -7,40 +7,27 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import coil.load
-import coil.transform.RoundedCornersTransformation
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
- * Dedicated destination page for a YouTube artist/album/playlist, similar to Metrolist browse pages.
+ * Dedicated destination page for a YouTube artist/album/playlist.
+ * Header/about sections are rendered as the first RecyclerView item so scrolling is natural.
  */
 class YouTubeBrowseFragment : Fragment() {
     private lateinit var btnBack: ImageButton
     private lateinit var tvTitle: TextView
-    private lateinit var ivArtistHeroArt: ImageView
-    private lateinit var tvArtistHeroTitle: TextView
-    private lateinit var tvArtistHeroSubtitle: TextView
-    private lateinit var artistActionRow: View
-    private lateinit var btnArtistRadio: View
-    private lateinit var btnArtistShuffle: View
-    private lateinit var ivBrowseHeaderArt: ImageView
-    private lateinit var tvBrowseHeaderTitle: TextView
-    private lateinit var tvBrowseHeaderSubtitle: TextView
-    private lateinit var btnPlayAll: View
-    private lateinit var btnShuffleAll: View
-    private lateinit var tvState: TextView
     private lateinit var rvBrowseResults: RecyclerView
     private lateinit var adapter: YouTubeBrowseAdapter
 
@@ -56,6 +43,8 @@ class YouTubeBrowseFragment : Fragment() {
     private var loadedItems: List<YouTubeVideo> = emptyList()
     private var cachedQueueSignature: String? = null
     private var cachedResolvedQueue: List<Song> = emptyList()
+    private var artistInfo: YouTubeArtistInfo? = null
+    private var stateMessage: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,8 +54,9 @@ class YouTubeBrowseFragment : Fragment() {
         browseTitle = args.getString(ARG_BROWSE_TITLE).orEmpty()
         browseSubtitle = args.getString(ARG_BROWSE_SUBTITLE).orEmpty()
         browseThumb = args.getString(ARG_BROWSE_THUMB)
-        browseType = YouTubeItemType.entries.getOrNull(args.getInt(ARG_BROWSE_TYPE_ORDINAL, YouTubeItemType.UNKNOWN.ordinal))
-            ?: YouTubeItemType.UNKNOWN
+        browseType = YouTubeItemType.entries.getOrNull(
+            args.getInt(ARG_BROWSE_TYPE_ORDINAL, YouTubeItemType.UNKNOWN.ordinal)
+        ) ?: YouTubeItemType.UNKNOWN
     }
 
     override fun onCreateView(
@@ -81,8 +71,8 @@ class YouTubeBrowseFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         bindViews(view)
         setupList()
-        setupHeader()
         setupActions()
+        refreshHeader()
         loadBrowse()
     }
 
@@ -94,84 +84,26 @@ class YouTubeBrowseFragment : Fragment() {
     private fun bindViews(root: View) {
         btnBack = root.findViewById(R.id.btnBack)
         tvTitle = root.findViewById(R.id.tvTitle)
-        ivArtistHeroArt = root.findViewById(R.id.ivArtistHeroArt)
-        tvArtistHeroTitle = root.findViewById(R.id.tvArtistHeroTitle)
-        tvArtistHeroSubtitle = root.findViewById(R.id.tvArtistHeroSubtitle)
-        artistActionRow = root.findViewById(R.id.artistActionRow)
-        btnArtistRadio = root.findViewById(R.id.btnArtistRadio)
-        btnArtistShuffle = root.findViewById(R.id.btnArtistShuffle)
-        ivBrowseHeaderArt = root.findViewById(R.id.ivBrowseHeaderArt)
-        tvBrowseHeaderTitle = root.findViewById(R.id.tvBrowseHeaderTitle)
-        tvBrowseHeaderSubtitle = root.findViewById(R.id.tvBrowseHeaderSubtitle)
-        btnPlayAll = root.findViewById(R.id.btnPlayAll)
-        btnShuffleAll = root.findViewById(R.id.btnShuffleAll)
-        tvState = root.findViewById(R.id.tvState)
         rvBrowseResults = root.findViewById(R.id.rvBrowseResults)
+        tvTitle.text = browseTypeLabelCapitalized()
     }
 
     private fun setupList() {
-        adapter = YouTubeBrowseAdapter { item -> onItemClicked(item) }
+        adapter = YouTubeBrowseAdapter(
+            onItemClick = { item -> onItemClicked(item) },
+            onPlayAllClick = { shuffle -> playBrowseItems(shuffle) },
+            onArtistOptionsClick = { showArtistPageOptionsDialog() },
+            onSectionSeeAllClick = { sectionTitle, sectionBrowseId, sectionBrowseParams ->
+                openSectionSeeAll(sectionTitle, sectionBrowseId, sectionBrowseParams)
+            }
+        )
         adapter.setHideItemThumbnails(browseType == YouTubeItemType.ALBUM)
         rvBrowseResults.layoutManager = LinearLayoutManager(requireContext())
         rvBrowseResults.adapter = adapter
     }
 
-    private fun setupHeader() {
-        tvTitle.text = browseTypeLabelCapitalized()
-        applyHeaderMode()
-        tvBrowseHeaderTitle.text = browseTitle
-        tvArtistHeroTitle.text = browseTitle
-        val subtitle = buildString {
-            append(browseTypeLabel())
-            if (browseSubtitle.isNotBlank()) {
-                append(" • ")
-                append(browseSubtitle)
-            }
-        }
-        tvBrowseHeaderSubtitle.text = subtitle
-        tvArtistHeroSubtitle.text = subtitle
-        val artworkUrl = YouTubeThumbnailUtils.toPlaybackArtworkUrl(browseThumb, null)
-        if (artworkUrl != null) {
-            ivBrowseHeaderArt.load(artworkUrl) {
-                crossfade(true)
-                placeholder(R.drawable.ml_library_music)
-                error(R.drawable.ml_library_music)
-                transformations(RoundedCornersTransformation(16f))
-            }
-            ivArtistHeroArt.load(artworkUrl) {
-                crossfade(true)
-                placeholder(R.drawable.ml_library_music)
-                error(R.drawable.ml_library_music)
-                transformations(RoundedCornersTransformation(20f))
-            }
-        } else {
-            ivBrowseHeaderArt.setImageResource(R.drawable.ml_library_music)
-            ivArtistHeroArt.setImageResource(R.drawable.ml_library_music)
-        }
-    }
-
-    private fun applyHeaderMode() {
-        val isArtist = browseType == YouTubeItemType.ARTIST
-        ivArtistHeroArt.visibility = if (isArtist) View.VISIBLE else View.GONE
-        tvArtistHeroTitle.visibility = if (isArtist) View.VISIBLE else View.GONE
-        tvArtistHeroSubtitle.visibility = if (isArtist) View.VISIBLE else View.GONE
-        artistActionRow.visibility = if (isArtist) View.VISIBLE else View.GONE
-
-        ivBrowseHeaderArt.visibility = if (isArtist) View.GONE else View.VISIBLE
-        tvBrowseHeaderTitle.visibility = if (isArtist) View.GONE else View.VISIBLE
-        tvBrowseHeaderSubtitle.visibility = if (isArtist) View.GONE else View.VISIBLE
-        btnPlayAll.visibility = if (isArtist) View.GONE else View.VISIBLE
-        btnShuffleAll.visibility = if (isArtist) View.GONE else View.VISIBLE
-    }
-
     private fun setupActions() {
-        btnBack.setOnClickListener {
-            parentFragmentManager.popBackStack()
-        }
-        btnPlayAll.setOnClickListener { playBrowseItems(shuffle = false) }
-        btnShuffleAll.setOnClickListener { playBrowseItems(shuffle = true) }
-        btnArtistRadio.setOnClickListener { playBrowseItems(shuffle = false) }
-        btnArtistShuffle.setOnClickListener { playBrowseItems(shuffle = true) }
+        btnBack.setOnClickListener { parentFragmentManager.popBackStack() }
     }
 
     private fun loadBrowse() {
@@ -184,19 +116,15 @@ class YouTubeBrowseFragment : Fragment() {
         activeJob?.cancel()
         activeJob = viewLifecycleOwner.lifecycleScope.launch {
             showState("Loading ${browseTypeLabel()}...")
-            val results = runCatching {
-                apiClient.browseCollection(browseId, browseParams)
-            }.getOrElse {
-                emptyList()
-            }
-            loadedItems = results
-            adapter.submit(results)
-            val playableCount = results.count { !it.videoId.isNullOrBlank() }
-            btnPlayAll.isEnabled = playableCount > 0
-            btnShuffleAll.isEnabled = playableCount > 1
-            btnArtistRadio.isEnabled = playableCount > 0
-            btnArtistShuffle.isEnabled = playableCount > 1
-            if (results.isEmpty()) {
+            val page = runCatching {
+                apiClient.browseCollectionPage(browseId, browseParams)
+            }.getOrNull() ?: YouTubeBrowsePage(emptyList())
+
+            loadedItems = page.items
+            artistInfo = page.artistInfo
+            adapter.submit(loadedItems)
+
+            if (loadedItems.isEmpty()) {
                 showState("No items found.")
             } else {
                 showState("Browsing ${browseTypeLabel()}.")
@@ -205,6 +133,10 @@ class YouTubeBrowseFragment : Fragment() {
     }
 
     private fun playBrowseItems(shuffle: Boolean) {
+        if (browseType == YouTubeItemType.ARTIST && shuffle) {
+            playArtistShuffleFast()
+            return
+        }
         val playableItems = loadedItems.filter { !it.videoId.isNullOrBlank() }
         if (playableItems.isEmpty()) {
             showToast("No playable songs found on this page")
@@ -240,13 +172,132 @@ class YouTubeBrowseFragment : Fragment() {
         }
     }
 
+    private fun playArtistShuffleFast() {
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            SharedPlayer.getOrCreate(requireContext()).pause()
+            showState("Starting artist shuffle...")
+
+            val songItems = fetchAllArtistShuffleCandidates()
+            if (songItems.isEmpty()) {
+                showState("No playable songs found on this artist page")
+                showToast("No playable songs found on this artist page")
+                return@launch
+            }
+
+            val randomized = songItems.shuffled(Random(System.currentTimeMillis()))
+            val firstResolved = resolveFirstPlayableSong(randomized)
+            if (firstResolved == null) {
+                showState("Unable to resolve playable songs from this artist.")
+                showToast("Could not start shuffled playback")
+                return@launch
+            }
+
+            val (firstItem, firstSong) = firstResolved
+            (activity as? MainActivity)?.playTemporaryQueue(listOf(firstSong), 0)
+            showState("Playing random artist song...")
+
+            val remainingItems = randomized.filterNot {
+                it.videoId == firstItem.videoId && it.id == firstItem.id
+            }
+            if (remainingItems.isEmpty()) {
+                showState("Artist shuffle ready.")
+                return@launch
+            }
+
+            // Build the rest of the shuffle queue in the background and append progressively
+            // so playback continues immediately while the queue is still loading.
+            launch {
+                val total = remainingItems.size
+                var loaded = 0
+                var playableLoaded = 0
+                showState("Playing now. Building shuffle queue 0/$total...")
+
+                remainingItems.forEach { item ->
+                    loaded += 1
+                    val playableSong = resolvePlayableSong(item)
+                    if (playableSong != null) {
+                        playableLoaded += 1
+                        (activity as? MainActivity)?.appendSongsToCurrentQueue(listOf(playableSong))
+                    }
+                    showState("Playing now. Building shuffle queue $loaded/$total...")
+                }
+
+                showState("Artist shuffle ready. Added $playableLoaded songs.")
+            }
+        }
+    }
+
+    private suspend fun fetchAllArtistShuffleCandidates(): List<YouTubeVideo> {
+        val endpointKeys = linkedSetOf<Pair<String, String?>>()
+        loadedItems.forEach { item ->
+            val section = item.sectionTitle.orEmpty()
+            if (
+                section.contains("song", ignoreCase = true) &&
+                !item.sectionBrowseId.isNullOrBlank()
+            ) {
+                endpointKeys += item.sectionBrowseId!! to item.sectionBrowseParams
+            }
+        }
+
+        val fetched = mutableListOf<YouTubeVideo>()
+        endpointKeys.forEach { (browseId, browseParams) ->
+            val sectionItems = runCatching {
+                apiClient.browseCollection(
+                    browseId = browseId,
+                    params = browseParams,
+                    maxResults = 2000
+                )
+            }.getOrDefault(emptyList())
+            fetched += sectionItems
+        }
+
+        val source = if (fetched.isNotEmpty()) fetched else loadedItems
+        return source
+            .asSequence()
+            .filter(::isArtistShuffleSongCandidate)
+            .distinctBy { it.videoId ?: it.id }
+            .toList()
+    }
+
+    private fun isArtistShuffleSongCandidate(item: YouTubeVideo): Boolean {
+        if (item.videoId.isNullOrBlank()) return false
+        if (item.type != YouTubeItemType.SONG) return false
+        val section = item.sectionTitle.orEmpty()
+        if (section.contains("video", ignoreCase = true)) return false
+        val text = "${item.title} ${item.channelTitle}".lowercase()
+        val blockedHints = listOf(
+            "official music video",
+            "music video",
+            "lyric video",
+            "lyrics video",
+            "visualizer"
+        )
+        return blockedHints.none { hint -> text.contains(hint) }
+    }
+
+    private suspend fun resolvePlayableSong(item: YouTubeVideo): Song? {
+        val videoId = item.videoId ?: return null
+        val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return null
+        val streamPlayable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
+        if (!streamPlayable) return null
+        return item.toSong(streamUrl)
+    }
+
+    private suspend fun resolveFirstPlayableSong(items: List<YouTubeVideo>): Pair<YouTubeVideo, Song>? {
+        for (item in items) {
+            val song = resolvePlayableSong(item) ?: continue
+            return item to song
+        }
+        return null
+    }
+
     private suspend fun resolveSongsInParallel(items: List<YouTubeVideo>): List<Song> = coroutineScope {
         val useAlbumArtwork = browseType == YouTubeItemType.ALBUM
         items.mapIndexed { index, item ->
             async {
                 val videoId = item.videoId ?: return@async null
-                val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull()
-                    ?: return@async null
+                val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return@async null
                 val streamPlayable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
                 if (!streamPlayable) return@async null
                 val forcedArtwork = if (useAlbumArtwork) browseThumb else null
@@ -290,22 +341,49 @@ class YouTubeBrowseFragment : Fragment() {
             .commit()
     }
 
+    private fun openSectionSeeAll(sectionTitle: String, sectionBrowseId: String, sectionBrowseParams: String?) {
+        val normalized = sectionTitle.lowercase()
+        val sectionType = when {
+            normalized.contains("album") || normalized.contains("single") || normalized.contains("ep") -> YouTubeItemType.ALBUM
+            normalized.contains("artist") -> YouTubeItemType.ARTIST
+            normalized.contains("playlist") -> YouTubeItemType.PLAYLIST
+            normalized.contains("song") -> YouTubeItemType.SONG
+            else -> YouTubeItemType.UNKNOWN
+        }
+        parentFragmentManager.beginTransaction()
+            .setCustomAnimations(
+                R.anim.slide_in_right,
+                R.anim.slide_out_left,
+                R.anim.slide_in_left,
+                R.anim.slide_out_right
+            )
+            .replace(
+                R.id.youtubeContainer,
+                newInstance(
+                    browseId = sectionBrowseId,
+                    browseParams = sectionBrowseParams,
+                    title = sectionTitle,
+                    subtitle = browseTitle,
+                    thumbUrl = browseThumb,
+                    type = sectionType
+                )
+            )
+            .addToBackStack("youtube_browse")
+            .commit()
+    }
+
     private fun playInApp(item: YouTubeVideo) {
         val videoId = item.videoId ?: return
         activeJob?.cancel()
         activeJob = viewLifecycleOwner.lifecycleScope.launch {
             showState("Resolving audio stream...")
-            val streamUrl = runCatching {
-                apiClient.resolveAudioStreamUrl(videoId)
-            }.getOrNull()
+            val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull()
             if (streamUrl.isNullOrBlank()) {
                 showState("Unable to resolve playable audio stream for this item.")
                 showToast("Could not start playback for this track")
                 return@launch
             }
-            val streamPlayable = runCatching {
-                apiClient.isStreamPlayable(streamUrl)
-            }.getOrDefault(false)
+            val streamPlayable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
             if (!streamPlayable) {
                 showState("In-app stream blocked. Opening YouTube Music fallback.")
                 openInYouTubeMusic(videoId)
@@ -330,6 +408,7 @@ class YouTubeBrowseFragment : Fragment() {
             duration = 0L,
             dateAddedSeconds = System.currentTimeMillis() / 1000,
             path = streamUrl,
+            sourceVideoId = videoId,
             albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(
                 rawUrl = forcedArtwork ?: thumbnailUrl,
                 videoId = videoId
@@ -339,18 +418,14 @@ class YouTubeBrowseFragment : Fragment() {
 
     private fun openInYouTubeMusic(videoId: String) {
         val context = context ?: return
-        val musicIntent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse("https://music.youtube.com/watch?v=$videoId")
-        ).apply {
+        val musicIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://music.youtube.com/watch?v=$videoId")).apply {
             `package` = "com.google.android.apps.youtube.music"
         }
         if (musicIntent.resolveActivity(context.packageManager) == null) {
             showToast("YouTube Music app not installed")
             return
         }
-        runCatching { startActivity(musicIntent) }
-            .onFailure { showToast("Unable to open YouTube Music") }
+        runCatching { startActivity(musicIntent) }.onFailure { showToast("Unable to open YouTube Music") }
     }
 
     private fun browseTypeLabel(): String = when (browseType) {
@@ -367,7 +442,63 @@ class YouTubeBrowseFragment : Fragment() {
     }
 
     private fun showState(message: String) {
-        tvState.text = message
+        stateMessage = message
+        refreshHeader()
+    }
+
+    private fun refreshHeader() {
+        val playableCount = loadedItems.count { !it.videoId.isNullOrBlank() }
+        val subtitle = buildString {
+            append(browseTypeLabel())
+            if (browseSubtitle.isNotBlank()) {
+                append(" • ")
+                append(browseSubtitle)
+            }
+        }
+        adapter.setHeader(
+            YouTubeBrowseAdapter.HeaderModel(
+                browseType = browseType,
+                title = browseTitle,
+                subtitle = subtitle,
+                artworkUrl = YouTubeThumbnailUtils.toPlaybackArtworkUrl(browseThumb, null),
+                stateMessage = stateMessage,
+                artistInfo = artistInfo,
+                showArtistDescription = artistPageSetting(KEY_SHOW_ARTIST_DESCRIPTION, true),
+                showArtistSubscribers = artistPageSetting(KEY_SHOW_ARTIST_SUBSCRIBERS, true),
+                showArtistMonthlyListeners = artistPageSetting(KEY_SHOW_ARTIST_MONTHLY_LISTENERS, true),
+                canPlay = playableCount > 0,
+                canShuffle = playableCount > 1
+            )
+        )
+    }
+
+    private fun showArtistPageOptionsDialog() {
+        if (browseType != YouTubeItemType.ARTIST) return
+        val labels = arrayOf("Show description", "Show subscriber count", "Show monthly listeners")
+        val checked = booleanArrayOf(
+            artistPageSetting(KEY_SHOW_ARTIST_DESCRIPTION, true),
+            artistPageSetting(KEY_SHOW_ARTIST_SUBSCRIBERS, true),
+            artistPageSetting(KEY_SHOW_ARTIST_MONTHLY_LISTENERS, true)
+        )
+        AlertDialog.Builder(requireContext())
+            .setTitle("Artist page options")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setPositiveButton("Apply") { _, _ ->
+                setArtistPageSetting(KEY_SHOW_ARTIST_DESCRIPTION, checked[0])
+                setArtistPageSetting(KEY_SHOW_ARTIST_SUBSCRIBERS, checked[1])
+                setArtistPageSetting(KEY_SHOW_ARTIST_MONTHLY_LISTENERS, checked[2])
+                refreshHeader()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun artistPageSetting(key: String, defaultValue: Boolean): Boolean {
+        return requireContext().getSharedPreferences(ARTIST_PAGE_PREFS, 0).getBoolean(key, defaultValue)
+    }
+
+    private fun setArtistPageSetting(key: String, value: Boolean) {
+        requireContext().getSharedPreferences(ARTIST_PAGE_PREFS, 0).edit().putBoolean(key, value).apply()
     }
 
     private fun showToast(message: String) {
@@ -375,6 +506,10 @@ class YouTubeBrowseFragment : Fragment() {
     }
 
     companion object {
+        private const val ARTIST_PAGE_PREFS = "blazing_music_artist_page_prefs"
+        private const val KEY_SHOW_ARTIST_DESCRIPTION = "show_artist_description"
+        private const val KEY_SHOW_ARTIST_SUBSCRIBERS = "show_artist_subscriber_count"
+        private const val KEY_SHOW_ARTIST_MONTHLY_LISTENERS = "show_artist_monthly_listeners"
         private const val ARG_BROWSE_ID = "arg_browse_id"
         private const val ARG_BROWSE_PARAMS = "arg_browse_params"
         private const val ARG_BROWSE_TITLE = "arg_browse_title"
@@ -390,16 +525,16 @@ class YouTubeBrowseFragment : Fragment() {
             thumbUrl: String?,
             type: YouTubeItemType
         ): YouTubeBrowseFragment {
-            val fragment = YouTubeBrowseFragment()
-            fragment.arguments = Bundle().apply {
-                putString(ARG_BROWSE_ID, browseId)
-                putString(ARG_BROWSE_PARAMS, browseParams)
-                putString(ARG_BROWSE_TITLE, title)
-                putString(ARG_BROWSE_SUBTITLE, subtitle)
-                putString(ARG_BROWSE_THUMB, thumbUrl)
-                putInt(ARG_BROWSE_TYPE_ORDINAL, type.ordinal)
+            return YouTubeBrowseFragment().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_BROWSE_ID, browseId)
+                    putString(ARG_BROWSE_PARAMS, browseParams)
+                    putString(ARG_BROWSE_TITLE, title)
+                    putString(ARG_BROWSE_SUBTITLE, subtitle)
+                    putString(ARG_BROWSE_THUMB, thumbUrl)
+                    putInt(ARG_BROWSE_TYPE_ORDINAL, type.ordinal)
+                }
             }
-            return fragment
         }
     }
 }

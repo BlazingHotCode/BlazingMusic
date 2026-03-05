@@ -17,6 +17,12 @@ object SharedPlayer {
                 DefaultMediaSourceFactory(context.applicationContext).setDataSourceFactory(
                     DefaultHttpDataSource.Factory()
                         .setAllowCrossProtocolRedirects(true)
+                        .setDefaultRequestProperties(
+                            mapOf(
+                                "Referer" to "https://music.youtube.com/",
+                                "Origin" to "https://music.youtube.com"
+                            )
+                        )
                         .setUserAgent(YOUTUBE_ANDROID_USER_AGENT)
                 )
             )

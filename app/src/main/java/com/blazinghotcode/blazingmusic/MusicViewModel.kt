@@ -39,6 +39,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val repository = MusicRepository(application)
+    private val youTubeApiClient = YouTubeApiClient()
     private var exoPlayer: ExoPlayer? = null
     private var playbackSettings: PlaybackSettings = PlaybackSettings(
         defaultShuffleEnabled = false,
@@ -89,6 +90,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var activeQueue: List<Song> = emptyList()
     private var currentQueueIndexInternal = -1
     private var playlistsInternal: List<Playlist> = emptyList()
+    private val retryingYouTubeVideoIds = mutableSetOf<String>()
 
     init {
         playbackSettings = PlaybackSettingsStore.read(application.applicationContext)
@@ -151,8 +153,49 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         queueIndex = currentQueueIndexInternal,
                         queueSize = activeQueue.size
                     )
+                    maybeRecoverYouTubeSourceError(error)
                 }
             })
+        }
+    }
+
+    private fun maybeRecoverYouTubeSourceError(error: androidx.media3.common.PlaybackException) {
+        if (error.errorCode != androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
+            return
+        }
+        val current = _currentSong.value ?: return
+        val videoId = current.sourceVideoId ?: return
+        if (!current.path.contains("googlevideo.com", ignoreCase = true)) return
+        if (!retryingYouTubeVideoIds.add(videoId)) return
+
+        val currentIndex = currentQueueIndexInternal
+        val resumePositionMs = getCurrentPosition().coerceAtLeast(0L)
+        viewModelScope.launch {
+            try {
+                val refreshedUrl = runCatching { youTubeApiClient.resolveAudioStreamUrl(videoId) }.getOrNull()
+                if (refreshedUrl.isNullOrBlank()) return@launch
+                val playable = runCatching { youTubeApiClient.isStreamPlayable(refreshedUrl) }.getOrDefault(false)
+                if (!playable) return@launch
+                if (currentIndex !in activeQueue.indices) return@launch
+
+                val updatedQueue = activeQueue.toMutableList()
+                val updatedSong = updatedQueue[currentIndex].copy(path = refreshedUrl)
+                updatedQueue[currentIndex] = updatedSong
+                activeQueue = updatedQueue
+                _queue.postValue(activeQueue)
+                _currentSong.postValue(updatedSong)
+                persistQueueState(positionOverrideMs = resumePositionMs)
+
+                exoPlayer?.let { player ->
+                    val mediaItems = activeQueue.map { mediaItemForSong(it) }
+                    val startIndex = currentIndex.coerceIn(0, mediaItems.lastIndex)
+                    player.setMediaItems(mediaItems, startIndex, resumePositionMs)
+                    player.prepare()
+                    player.play()
+                }
+            } finally {
+                retryingYouTubeVideoIds.remove(videoId)
+            }
         }
     }
 
@@ -633,6 +676,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         .put("date_added_seconds", song.dateAddedSeconds)
                         .put("path", song.path)
                         .put("album_art_uri", song.albumArtUri)
+                        .put("source_video_id", song.sourceVideoId)
                 )
             }
         }
@@ -827,7 +871,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                                 duration = json.optLong("duration", 0L),
                                 dateAddedSeconds = json.optLong("date_added_seconds", 0L),
                                 path = path,
-                                albumArtUri = json.optString("album_art_uri", "").ifBlank { null }
+                                albumArtUri = json.optString("album_art_uri", "").ifBlank { null },
+                                sourceVideoId = json.optString("source_video_id", "").ifBlank { null }
                             )
                         )
                     }
