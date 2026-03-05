@@ -59,7 +59,7 @@ class MusicService : MediaSessionService() {
             .build()
     }
 
-    private inner class MediaSessionCallback : MediaSession.Callback
+    private class MediaSessionCallback : MediaSession.Callback
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession

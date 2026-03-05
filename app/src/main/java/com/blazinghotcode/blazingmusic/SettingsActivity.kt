@@ -4,21 +4,21 @@ import android.os.Bundle
 import android.widget.ImageButton
 import android.widget.RadioButton
 import android.widget.RadioGroup
-import android.widget.Switch
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 
 /**
  * Settings screen for playback defaults and audio focus behavior.
  */
 class SettingsActivity : AppCompatActivity() {
 
-    private lateinit var switchDefaultShuffle: Switch
+    private lateinit var switchDefaultShuffle: SwitchCompat
     private lateinit var groupRepeat: RadioGroup
     private lateinit var radioRepeatOff: RadioButton
     private lateinit var radioRepeatAll: RadioButton
     private lateinit var radioRepeatOne: RadioButton
-    private lateinit var switchHandleAudioFocus: Switch
-    private lateinit var switchPauseOnNoisy: Switch
+    private lateinit var switchHandleAudioFocus: SwitchCompat
+    private lateinit var switchPauseOnNoisy: SwitchCompat
     private lateinit var btnBack: ImageButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
