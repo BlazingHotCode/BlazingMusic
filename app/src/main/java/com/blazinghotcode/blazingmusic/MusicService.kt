@@ -10,7 +10,6 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.media3.common.Player
-import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
@@ -32,13 +31,13 @@ class MusicService : MediaSessionService() {
         NotificationManagerCompat.from(this).cancel(1100)
 
         setMediaNotificationProvider(
-            DefaultMediaNotificationProvider(
+            BlazingMediaNotificationProvider(
                 this,
                 { NOTIFICATION_ID },
                 CHANNEL_ID,
                 R.string.app_name
             ).apply {
-                setSmallIcon(R.drawable.ml_library_music)
+                setSmallIcon(R.drawable.ic_stat_blazing_music)
             }
         )
 
@@ -144,7 +143,7 @@ class MusicService : MediaSessionService() {
 
     private fun startForegroundBootstrap() {
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ml_library_music)
+            .setSmallIcon(R.drawable.ic_stat_blazing_music)
             .setContentTitle(getString(R.string.app_name))
             .setContentText("")
             .setOngoing(true)
