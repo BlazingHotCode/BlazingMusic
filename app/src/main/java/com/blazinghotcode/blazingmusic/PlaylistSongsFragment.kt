@@ -2,6 +2,8 @@ package com.blazinghotcode.blazingmusic
 
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.ContextThemeWrapper
@@ -34,6 +36,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         private const val ARG_PLAYLIST_NAME = "arg_playlist_name"
         private const val SORT_PREFS_NAME = "blazing_music_sort_prefs"
         private const val PLAYLIST_SORT_KEY_PREFIX = "playlist_sort_"
+        private const val SEARCH_DEBOUNCE_MS = 220L
 
         fun newInstance(playlistId: Long, playlistName: String): PlaylistSongsFragment {
             return PlaylistSongsFragment().apply {
@@ -89,6 +92,8 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
     private var isCurrentlyPlaying = false
     private var shouldRestartQueue = false
+    private val searchDebounceHandler = Handler(Looper.getMainLooper())
+    private var searchDebounceRunnable: Runnable? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -448,9 +453,19 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                applySongFilter(s?.toString().orEmpty())
+                val query = s?.toString().orEmpty()
+                searchDebounceRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+                val runnable = Runnable { applySongFilter(query) }
+                searchDebounceRunnable = runnable
+                searchDebounceHandler.postDelayed(runnable, SEARCH_DEBOUNCE_MS)
             }
         })
+    }
+
+    override fun onDestroyView() {
+        searchDebounceRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+        searchDebounceRunnable = null
+        super.onDestroyView()
     }
 
     private fun setupListActions() {

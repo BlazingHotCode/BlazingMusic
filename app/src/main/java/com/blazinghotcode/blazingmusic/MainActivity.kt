@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val SORT_PREFS_NAME = "blazing_music_sort_prefs"
         private const val KEY_HOME_SORT = "home_sort"
+        private const val SEARCH_DEBOUNCE_MS = 220L
     }
 
     private val viewModel: MusicViewModel by viewModels()
@@ -103,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
     }
     private val handler = Handler(Looper.getMainLooper())
+    private var searchDebounceRunnable: Runnable? = null
     private val updateSeekbarRunnable = object : Runnable {
         override fun run() {
             val position = viewModel.getCurrentPosition()
@@ -1032,7 +1034,10 @@ class MainActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                applySongListPresentation()
+                searchDebounceRunnable?.let { handler.removeCallbacks(it) }
+                val runnable = Runnable { applySongListPresentation() }
+                searchDebounceRunnable = runnable
+                handler.postDelayed(runnable, SEARCH_DEBOUNCE_MS)
             }
         })
     }
@@ -1169,6 +1174,12 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         handler.removeCallbacks(updateSeekbarRunnable)
         viewModel.persistPlaybackPosition()
+    }
+
+    override fun onDestroy() {
+        searchDebounceRunnable?.let { handler.removeCallbacks(it) }
+        searchDebounceRunnable = null
+        super.onDestroy()
     }
 
     private fun formatDuration(durationMs: Long): String {

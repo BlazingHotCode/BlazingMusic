@@ -1,6 +1,8 @@
 package com.blazinghotcode.blazingmusic
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.TypedValue
@@ -26,6 +28,9 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 
 class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
+    companion object {
+        private const val SEARCH_DEBOUNCE_MS = 220L
+    }
 
     private val viewModel: MusicViewModel by activityViewModels()
     private lateinit var rvPlaylists: RecyclerView
@@ -36,6 +41,8 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     private lateinit var btnBack: ImageButton
     private lateinit var playlistAdapter: PlaylistAdapter
     private var allPlaylists: List<Playlist> = emptyList()
+    private val searchDebounceHandler = Handler(Looper.getMainLooper())
+    private var searchDebounceRunnable: Runnable? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -79,7 +86,11 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                applyFilter(s?.toString().orEmpty())
+                val query = s?.toString().orEmpty()
+                searchDebounceRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+                val runnable = Runnable { applyFilter(query) }
+                searchDebounceRunnable = runnable
+                searchDebounceHandler.postDelayed(runnable, SEARCH_DEBOUNCE_MS)
             }
         })
     }
@@ -89,6 +100,12 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
             allPlaylists = playlists
             applyFilter(etSearchPlaylists.text?.toString().orEmpty())
         }
+    }
+
+    override fun onDestroyView() {
+        searchDebounceRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+        searchDebounceRunnable = null
+        super.onDestroyView()
     }
 
     private fun applyFilter(query: String) {

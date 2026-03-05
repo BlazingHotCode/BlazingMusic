@@ -22,7 +22,7 @@
 20. [x] Add media notification player controls via `MediaStyle` notification actions: previous, play/pause, next, seek.
 21. [x] Add lock-screen player metadata/controls driven by `MediaSession` metadata and playback state updates.
 22. [x] Request and handle POST_NOTIFICATIONS permission on Android 13+.
-23. [ ] Debounce search input for smoother filtering on large libraries.
+23. [x] Debounce search input for smoother filtering on large libraries.
 24. [ ] Add fast-scrolling and alphabetical indexing in song list.
 25. [ ] Modernize the full UI/UX and visual design so the app looks polished and production-ready.
 26. [ ] Show empty/error states (no songs, permission denied, load failure).
