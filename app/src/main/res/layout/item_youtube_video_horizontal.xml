@@ -51,4 +51,17 @@
         app:layout_constraintTop_toBottomOf="@id/tvVideoTitle"
         tools:text="Album • Artist" />
 
+    <ImageButton
+        android:id="@+id/btnItemMore"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:background="@android:color/transparent"
+        android:contentDescription="More options"
+        android:padding="5dp"
+        android:src="@drawable/ml_more_vert"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@id/ivVideoThumb"
+        app:layout_constraintTop_toTopOf="@id/ivVideoThumb"
+        app:tint="@color/text_secondary" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

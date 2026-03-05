@@ -80,7 +80,10 @@ class YouTubeSearchActivity : AppCompatActivity() {
     }
 
     private fun setupList() {
-        adapter = YouTubeSearchAdapter { item -> onItemClicked(item) }
+        adapter = YouTubeSearchAdapter(
+            onVideoClick = { item -> onItemClicked(item) },
+            onItemMenuClick = { item, anchor -> showItemMenu(item, anchor) }
+        )
         rvResults.layoutManager = LinearLayoutManager(this)
         rvResults.adapter = adapter
     }
@@ -149,6 +152,36 @@ class YouTubeSearchActivity : AppCompatActivity() {
             !item.browseId.isNullOrBlank() -> openBrowse(item)
             else -> showToast("This item cannot be opened yet")
         }
+    }
+
+    private fun showItemMenu(item: YouTubeVideo, anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        when (item.type) {
+            YouTubeItemType.SONG -> popup.menu.add(0, 1, 0, "Play now")
+            YouTubeItemType.ALBUM -> {
+                popup.menu.add(0, 2, 0, "Open album")
+                popup.menu.add(0, 3, 1, "Play now")
+            }
+            else -> return
+        }
+        popup.setOnMenuItemClickListener { menu ->
+            when (menu.itemId) {
+                1 -> {
+                    playInApp(item)
+                    true
+                }
+                2 -> {
+                    if (!item.browseId.isNullOrBlank()) openBrowse(item) else showToast("Album page unavailable")
+                    true
+                }
+                3 -> {
+                    playInApp(item)
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
     }
 
     private fun openBrowse(item: YouTubeVideo) {
@@ -270,6 +303,10 @@ class YouTubeSearchActivity : AppCompatActivity() {
             dateAddedSeconds = System.currentTimeMillis() / 1000,
             path = streamUrl,
             sourceVideoId = videoId,
+            sourcePlaylistId = sourcePlaylistId,
+            sourcePlaylistSetVideoId = sourcePlaylistSetVideoId,
+            sourceParams = sourceParams,
+            sourceIndex = sourceIndex,
             albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(thumbnailUrl, videoId)
         )
     }

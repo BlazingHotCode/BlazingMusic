@@ -17,7 +17,9 @@ import coil.transform.RoundedCornersTransformation
 
 class YouTubeBrowseAdapter(
     private val onItemClick: (YouTubeVideo) -> Unit,
+    private val onItemMenuClick: (item: YouTubeVideo, anchor: View) -> Unit,
     private val onPlayAllClick: (Boolean) -> Unit,
+    private val onStartRadioClick: () -> Unit,
     private val onArtistOptionsClick: () -> Unit,
     private val onSectionSeeAllClick: (sectionTitle: String, browseId: String, browseParams: String?) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -39,9 +41,11 @@ class YouTubeBrowseAdapter(
     private val rows = mutableListOf<Row>()
     private var hideItemThumbnails = false
     private var headerModel: HeaderModel? = null
+    private var browseType: YouTubeItemType = YouTubeItemType.UNKNOWN
 
     fun setHeader(model: HeaderModel) {
         headerModel = model
+        browseType = model.browseType
         notifyDataSetChanged()
     }
 
@@ -79,6 +83,7 @@ class YouTubeBrowseAdapter(
             VIEW_TYPE_HEADER -> HeaderViewHolder(
                 inflater.inflate(R.layout.item_youtube_browse_page_header, parent, false),
                 onPlayAllClick,
+                onStartRadioClick,
                 onArtistOptionsClick
             )
             VIEW_TYPE_SECTION -> SectionViewHolder(
@@ -87,9 +92,14 @@ class YouTubeBrowseAdapter(
             )
             VIEW_TYPE_HORIZONTAL -> HorizontalSectionViewHolder(
                 inflater.inflate(R.layout.item_youtube_horizontal_section, parent, false),
-                onItemClick
+                onItemClick,
+                onItemMenuClick
             )
-            else -> ItemViewHolder(inflater.inflate(R.layout.item_youtube_video, parent, false), onItemClick)
+            else -> ItemViewHolder(
+                inflater.inflate(R.layout.item_youtube_video, parent, false),
+                onItemClick,
+                onItemMenuClick
+            )
         }
     }
 
@@ -122,29 +132,65 @@ class YouTubeBrowseAdapter(
         val sortedSections = sections.entries.sortedBy { (title, sectionBucket) ->
             sectionRank(title, sectionBucket.items)
         }
+        val hasTopSongs = sortedSections.any { it.key.contains("top songs", ignoreCase = true) }
 
         val out = mutableListOf<Row>()
         sortedSections.forEach { (title, sectionBucket) ->
+            if (
+                browseType == YouTubeItemType.ARTIST &&
+                hasTopSongs &&
+                title.equals("songs", ignoreCase = true)
+            ) {
+                // Metrolist-style: avoid duplicate full Songs block when Top songs exists.
+                return@forEach
+            }
+
             val sectionItems = sectionBucket.items
+            val limitedItems = maybeLimitSectionItems(title, sectionItems)
             out += Row.Section(
                 title = title,
                 browseId = sectionBucket.browseId,
                 browseParams = sectionBucket.browseParams,
-                showSeeAll = shouldShowSeeAllButton(title, sectionBucket.browseId)
+                showSeeAll = shouldShowSeeAllButton(
+                    title = title,
+                    browseId = sectionBucket.browseId,
+                    totalItems = sectionItems.size,
+                    renderedItems = limitedItems.size
+                )
             )
-            if (shouldRenderHorizontal(title, sectionItems)) {
-                out += Row.HorizontalItems(sectionItems)
+            if (shouldRenderHorizontal(title, limitedItems)) {
+                out += Row.HorizontalItems(limitedItems)
             } else {
-                sectionItems.forEach { out += Row.Item(it) }
+                limitedItems.forEach { out += Row.Item(it) }
             }
         }
         return out
     }
 
-    private fun shouldShowSeeAllButton(title: String, browseId: String?): Boolean {
+    private fun maybeLimitSectionItems(title: String, items: List<YouTubeVideo>): List<YouTubeVideo> {
+        if (items.isEmpty()) return items
+        if (browseType == YouTubeItemType.ARTIST && title.contains("top songs", ignoreCase = true)) {
+            // Match Metrolist behavior where Top songs highlights first items and uses "See all" for full list.
+            return items.take(5)
+        }
+        return items
+    }
+
+    private fun shouldShowSeeAllButton(
+        title: String,
+        browseId: String?,
+        totalItems: Int,
+        renderedItems: Int
+    ): Boolean {
         if (browseId.isNullOrBlank()) return false
         val normalized = title.lowercase()
-        return normalized.contains("album") || normalized.contains("single") || normalized.contains("ep")
+        if (renderedItems < totalItems) return true
+        return normalized.contains("album") ||
+            normalized.contains("single") ||
+            normalized.contains("ep") ||
+            normalized.contains("song") ||
+            normalized.contains("video") ||
+            normalized.contains("playlist")
     }
 
     private fun sectionRank(title: String, items: List<YouTubeVideo>): Int {
@@ -174,7 +220,7 @@ class YouTubeBrowseAdapter(
             normalizedTitle.contains("playlist")
         ) return true
         val firstType = items.first().type
-        return firstType == YouTubeItemType.ALBUM || firstType == YouTubeItemType.PLAYLIST || firstType == YouTubeItemType.ARTIST
+        return firstType == YouTubeItemType.ALBUM || firstType == YouTubeItemType.PLAYLIST
     }
 
     private fun defaultSectionForType(type: YouTubeItemType): String = when (type) {
@@ -189,6 +235,7 @@ class YouTubeBrowseAdapter(
     private class HeaderViewHolder(
         itemView: View,
         private val onPlayAllClick: (Boolean) -> Unit,
+        private val onStartRadioClick: () -> Unit,
         private val onArtistOptionsClick: () -> Unit
     ) : RecyclerView.ViewHolder(itemView) {
         private val browseHeaderContainer: ConstraintLayout = itemView.findViewById(R.id.browseHeaderContainer)
@@ -206,6 +253,7 @@ class YouTubeBrowseAdapter(
         private val tvBrowseHeaderSubtitle: TextView = itemView.findViewById(R.id.tvBrowseHeaderSubtitle)
         private val browseActionRow: LinearLayout = itemView.findViewById(R.id.browseActionRow)
         private val btnPlayAll: Button = itemView.findViewById(R.id.btnPlayAll)
+        private val btnRadioAll: Button = itemView.findViewById(R.id.btnRadioAll)
         private val btnShuffleAll: Button = itemView.findViewById(R.id.btnShuffleAll)
 
         private val aboutContainer: View = itemView.findViewById(R.id.artistAboutContainer)
@@ -216,6 +264,7 @@ class YouTubeBrowseAdapter(
 
         fun bind(model: HeaderModel) {
             val isArtist = model.browseType == YouTubeItemType.ARTIST
+            val isAlbum = model.browseType == YouTubeItemType.ALBUM
             val context = itemView.context
             val params = browseHeaderContainer.layoutParams as ViewGroup.MarginLayoutParams
             if (isArtist) {
@@ -272,13 +321,17 @@ class YouTubeBrowseAdapter(
             }
 
             btnPlayAll.isEnabled = model.canPlay
+            btnRadioAll.isEnabled = model.canPlay
             btnShuffleAll.isEnabled = model.canShuffle
             btnArtistRadio.isEnabled = model.canPlay
             btnArtistShuffle.isEnabled = model.canShuffle
 
+            btnRadioAll.visibility = if (isAlbum) View.GONE else View.VISIBLE
+
             btnPlayAll.setOnClickListener { onPlayAllClick(false) }
+            btnRadioAll.setOnClickListener(if (isAlbum) null else View.OnClickListener { onStartRadioClick() })
             btnShuffleAll.setOnClickListener { onPlayAllClick(true) }
-            btnArtistRadio.setOnClickListener { onPlayAllClick(false) }
+            btnArtistRadio.setOnClickListener { onStartRadioClick() }
             btnArtistShuffle.setOnClickListener { onPlayAllClick(true) }
             btnArtistPageOptions.setOnClickListener { onArtistOptionsClick() }
 
@@ -324,10 +377,11 @@ class YouTubeBrowseAdapter(
 
     private class HorizontalSectionViewHolder(
         itemView: View,
-        private val onItemClick: (YouTubeVideo) -> Unit
+        private val onItemClick: (YouTubeVideo) -> Unit,
+        private val onItemMenuClick: (item: YouTubeVideo, anchor: View) -> Unit
     ) : RecyclerView.ViewHolder(itemView) {
         private val rv: RecyclerView = itemView.findViewById(R.id.rvHorizontalItems)
-        private val horizontalAdapter = HorizontalItemsAdapter(onItemClick)
+        private val horizontalAdapter = HorizontalItemsAdapter(onItemClick, onItemMenuClick)
 
         init {
             rv.layoutManager = LinearLayoutManager(itemView.context, LinearLayoutManager.HORIZONTAL, false)
@@ -340,7 +394,8 @@ class YouTubeBrowseAdapter(
     }
 
     private class HorizontalItemsAdapter(
-        private val onItemClick: (YouTubeVideo) -> Unit
+        private val onItemClick: (YouTubeVideo) -> Unit,
+        private val onItemMenuClick: (item: YouTubeVideo, anchor: View) -> Unit
     ) : RecyclerView.Adapter<HorizontalItemsAdapter.HorizontalItemViewHolder>() {
         private val items = mutableListOf<YouTubeVideo>()
 
@@ -353,7 +408,7 @@ class YouTubeBrowseAdapter(
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): HorizontalItemViewHolder {
             val view = LayoutInflater.from(parent.context)
                 .inflate(R.layout.item_youtube_video_horizontal, parent, false)
-            return HorizontalItemViewHolder(view, onItemClick)
+            return HorizontalItemViewHolder(view, onItemClick, onItemMenuClick)
         }
 
         override fun onBindViewHolder(holder: HorizontalItemViewHolder, position: Int) {
@@ -364,11 +419,13 @@ class YouTubeBrowseAdapter(
 
         class HorizontalItemViewHolder(
             itemView: View,
-            private val onItemClick: (YouTubeVideo) -> Unit
+            private val onItemClick: (YouTubeVideo) -> Unit,
+            private val onItemMenuClick: (item: YouTubeVideo, anchor: View) -> Unit
         ) : RecyclerView.ViewHolder(itemView) {
             private val thumb: ImageView = itemView.findViewById(R.id.ivVideoThumb)
             private val title: TextView = itemView.findViewById(R.id.tvVideoTitle)
             private val subtitle: TextView = itemView.findViewById(R.id.tvChannelTitle)
+            private val btnItemMore: ImageButton = itemView.findViewById(R.id.btnItemMore)
 
             fun bind(video: YouTubeVideo) {
                 title.text = video.title
@@ -388,6 +445,12 @@ class YouTubeBrowseAdapter(
                         transformations(RoundedCornersTransformation(12f))
                     }
                 } ?: thumb.setImageResource(R.drawable.ml_library_music)
+                val showMenu = video.type == YouTubeItemType.ALBUM
+                btnItemMore.visibility = if (showMenu) View.VISIBLE else View.GONE
+                btnItemMore.setOnClickListener(null)
+                if (showMenu) {
+                    btnItemMore.setOnClickListener { onItemMenuClick(video, btnItemMore) }
+                }
                 itemView.setOnClickListener { onItemClick(video) }
             }
         }
@@ -395,12 +458,14 @@ class YouTubeBrowseAdapter(
 
     private class ItemViewHolder(
         itemView: View,
-        private val onItemClick: (YouTubeVideo) -> Unit
+        private val onItemClick: (YouTubeVideo) -> Unit,
+        private val onItemMenuClick: (item: YouTubeVideo, anchor: View) -> Unit
     ) : RecyclerView.ViewHolder(itemView) {
         private val root: ConstraintLayout = itemView as ConstraintLayout
         private val thumb: ImageView = itemView.findViewById(R.id.ivVideoThumb)
         private val title: TextView = itemView.findViewById(R.id.tvVideoTitle)
         private val subtitle: TextView = itemView.findViewById(R.id.tvChannelTitle)
+        private val btnItemMore: ImageButton = itemView.findViewById(R.id.btnItemMore)
 
         fun bind(video: YouTubeVideo, hideThumbnail: Boolean) {
             applyThumbnailMode(hideThumbnail)
@@ -424,6 +489,12 @@ class YouTubeBrowseAdapter(
                 } ?: thumb.setImageResource(R.drawable.ml_library_music)
             } else {
                 thumb.setImageDrawable(null)
+            }
+            val showMenu = video.type == YouTubeItemType.ALBUM
+            btnItemMore.visibility = if (showMenu) View.VISIBLE else View.GONE
+            btnItemMore.setOnClickListener(null)
+            if (showMenu) {
+                btnItemMore.setOnClickListener { onItemMenuClick(video, btnItemMore) }
             }
             itemView.setOnClickListener { onItemClick(video) }
         }

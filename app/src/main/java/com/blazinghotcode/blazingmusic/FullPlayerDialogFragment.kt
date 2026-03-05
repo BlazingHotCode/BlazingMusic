@@ -4,6 +4,8 @@ import android.content.res.ColorStateList
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.widget.PopupMenu
+import android.widget.Toast
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -16,14 +18,20 @@ import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import coil.load
 import coil.transform.RoundedCornersTransformation
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /** Full-screen player dialog with gesture-based dismiss and queue handoff controls. */
 class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
 
     companion object {
         const val TAG = "FullPlayerDialog"
+        private const val MENU_SONG_RADIO_UP_NEXT = 1
+        private const val MENU_SHUFFLE_UPCOMING = 2
+        private const val MENU_CLEAR_UPCOMING = 3
     }
 
     private val viewModel: MusicViewModel by activityViewModels()
@@ -41,6 +49,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
     private lateinit var btnNext: ImageButton
     private lateinit var btnRepeat: ImageButton
     private lateinit var btnQueue: ImageButton
+    private lateinit var btnMore: ImageButton
     private lateinit var fullPlayerRoot: View
     private lateinit var topGestureZone: View
     private lateinit var bottomGestureZone: View
@@ -52,6 +61,10 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
     private var isQueueDragInProgress = false
     private var closeVelocityTracker: VelocityTracker? = null
     private var queueVelocityTracker: VelocityTracker? = null
+    private var radioJob: Job? = null
+    private val apiClient by lazy { YouTubeApiClient() }
+    private var queueSnapshot: List<Song> = emptyList()
+    private var queueIndexSnapshot: Int = -1
 
     private val handler = Handler(Looper.getMainLooper())
     private val updateSeekbarRunnable = object : Runnable {
@@ -108,6 +121,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         btnNext = root.findViewById(R.id.btnNext)
         btnRepeat = root.findViewById(R.id.btnRepeat)
         btnQueue = root.findViewById(R.id.btnQueue)
+        btnMore = root.findViewById(R.id.btnMore)
         bottomGestureZone = root.findViewById(R.id.bottomGestureZone)
     }
 
@@ -137,6 +151,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         btnShuffle.setOnClickListener { viewModel.toggleShuffle() }
         btnRepeat.setOnClickListener { viewModel.toggleRepeat() }
         btnQueue.setOnClickListener { openQueueSheet() }
+        btnMore.setOnClickListener { showOverflowMenu() }
         setupDragToDismiss()
         setupSwipeUpToQueue()
     }
@@ -342,6 +357,156 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         viewModel.repeatMode.observe(viewLifecycleOwner) { mode ->
             updateRepeatUi(mode)
         }
+
+        viewModel.queue.observe(viewLifecycleOwner) { queueSnapshot = it }
+        viewModel.currentQueueIndex.observe(viewLifecycleOwner) { queueIndexSnapshot = it }
+    }
+
+    private fun showOverflowMenu() {
+        val popup = PopupMenu(requireContext(), btnMore)
+        popup.menu.add(0, MENU_SONG_RADIO_UP_NEXT, 0, "Song radio (Up next)")
+        popup.menu.add(0, MENU_SHUFFLE_UPCOMING, 1, "Shuffle upcoming")
+        popup.menu.add(0, MENU_CLEAR_UPCOMING, 2, "Clear upcoming")
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                MENU_SONG_RADIO_UP_NEXT -> {
+                    startSongRadioUpNext()
+                    true
+                }
+                MENU_SHUFFLE_UPCOMING -> {
+                    shuffleUpcomingQueue()
+                    true
+                }
+                MENU_CLEAR_UPCOMING -> {
+                    clearUpcomingQueue()
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+
+    private fun startSongRadioUpNext() {
+        val currentSong = viewModel.currentSong.value ?: run {
+            showToast("Nothing is currently playing")
+            return
+        }
+        val seedVideoId = currentSong.sourceVideoId ?: run {
+            showToast("Song radio is available for YouTube tracks")
+            return
+        }
+
+        radioJob?.cancel()
+        radioJob = viewLifecycleOwner.lifecycleScope.launch {
+            showToast("Building song radio...")
+            val candidates = runCatching {
+                apiClient.fetchRadioCandidates(
+                    videoId = seedVideoId,
+                    playlistId = currentSong.sourcePlaylistId,
+                    playlistSetVideoId = currentSong.sourcePlaylistSetVideoId,
+                    params = currentSong.sourceParams,
+                    index = currentSong.sourceIndex,
+                    fallbackQuery = "${currentSong.artist} ${currentSong.title}",
+                    maxResults = 90
+                )
+            }
+                .getOrDefault(emptyList())
+                .asSequence()
+                .filter { it.videoId != seedVideoId }
+                .filter(::isRadioSongCandidate)
+                .distinctBy { it.videoId ?: it.id }
+                .toList()
+
+            if (candidates.isEmpty()) {
+                showToast("No radio recommendations found")
+                return@launch
+            }
+
+            val resolved = mutableListOf<Song>()
+            for (candidate in candidates) {
+                val playable = resolvePlayableRadioSong(candidate) ?: continue
+                resolved += playable
+            }
+
+            if (resolved.isEmpty()) {
+                showToast("Unable to build playable radio queue")
+                return@launch
+            }
+
+            viewModel.replaceUpcomingQueue(resolved)
+            showToast("Song radio ready (${resolved.size} up next)")
+        }
+    }
+
+    private fun shuffleUpcomingQueue() {
+        if (queueIndexSnapshot !in queueSnapshot.indices) {
+            showToast("No active queue")
+            return
+        }
+        val upcoming = queueSnapshot.drop(queueIndexSnapshot + 1)
+        if (upcoming.isEmpty()) {
+            showToast("No upcoming songs to shuffle")
+            return
+        }
+        viewModel.replaceUpcomingQueue(upcoming.shuffled())
+        showToast("Upcoming queue shuffled")
+    }
+
+    private fun clearUpcomingQueue() {
+        if (queueIndexSnapshot !in queueSnapshot.indices) {
+            showToast("No active queue")
+            return
+        }
+        val hadUpcoming = queueSnapshot.size > queueIndexSnapshot + 1
+        viewModel.replaceUpcomingQueue(emptyList())
+        if (hadUpcoming) {
+            showToast("Cleared upcoming queue")
+        } else {
+            showToast("No upcoming songs to clear")
+        }
+    }
+
+    private fun isRadioSongCandidate(item: YouTubeVideo): Boolean {
+        if (item.videoId.isNullOrBlank()) return false
+        if (item.type != YouTubeItemType.SONG) return false
+        val section = item.sectionTitle.orEmpty()
+        if (section.contains("video", ignoreCase = true)) return false
+        val text = "${item.title} ${item.channelTitle}".lowercase()
+        val blockedHints = listOf(
+            "official music video",
+            "music video",
+            "lyric video",
+            "lyrics video",
+            "visualizer"
+        )
+        return blockedHints.none { hint -> text.contains(hint) }
+    }
+
+    private suspend fun resolvePlayableRadioSong(item: YouTubeVideo): Song? {
+        val videoId = item.videoId ?: return null
+        val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return null
+        val playable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
+        if (!playable) return null
+        return Song(
+            id = (item.id.hashCode().toLong() and 0x7fffffffL) + 10_000_000_000L,
+            title = item.title,
+            artist = item.channelTitle.ifBlank { "YouTube Music" },
+            album = "YouTube",
+            duration = 0L,
+            dateAddedSeconds = System.currentTimeMillis() / 1000,
+            path = streamUrl,
+            albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(item.thumbnailUrl, item.videoId),
+            sourceVideoId = item.videoId,
+            sourcePlaylistId = item.sourcePlaylistId,
+            sourcePlaylistSetVideoId = item.sourcePlaylistSetVideoId,
+            sourceParams = item.sourceParams,
+            sourceIndex = item.sourceIndex
+        )
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
     }
 
     private fun updatePrimaryControlButton() {
@@ -385,4 +550,5 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
     private fun dp(value: Float): Float {
         return value * resources.displayMetrics.density
     }
+
 }

@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -91,7 +92,9 @@ class YouTubeBrowseFragment : Fragment() {
     private fun setupList() {
         adapter = YouTubeBrowseAdapter(
             onItemClick = { item -> onItemClicked(item) },
+            onItemMenuClick = { item, anchor -> showItemMenu(item, anchor) },
             onPlayAllClick = { shuffle -> playBrowseItems(shuffle) },
+            onStartRadioClick = { startRadioFromCurrentContext() },
             onArtistOptionsClick = { showArtistPageOptionsDialog() },
             onSectionSeeAllClick = { sectionTitle, sectionBrowseId, sectionBrowseParams ->
                 openSectionSeeAll(sectionTitle, sectionBrowseId, sectionBrowseParams)
@@ -228,6 +231,82 @@ class YouTubeBrowseFragment : Fragment() {
         }
     }
 
+    private fun startRadioFromCurrentContext() {
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            SharedPlayer.getOrCreate(requireContext()).pause()
+            showState("Starting radio...")
+
+            val seed = findRadioSeedItem()
+            if (seed == null) {
+                showState("No song available for radio.")
+                showToast("No song available for radio")
+                return@launch
+            }
+
+            val firstSong = resolvePlayableSong(seed)
+            if (firstSong == null) {
+                showState("Unable to start radio from this item.")
+                showToast("Could not start radio")
+                return@launch
+            }
+
+            (activity as? MainActivity)?.playTemporaryQueue(listOf(firstSong), 0)
+            showState("Playing radio seed...")
+
+            launch radioBuild@{
+                val seedVideoId = seed.videoId ?: return@radioBuild
+                val candidates = runCatching {
+                    apiClient.fetchRadioCandidates(
+                        videoId = seedVideoId,
+                        playlistId = seed.sourcePlaylistId,
+                        playlistSetVideoId = seed.sourcePlaylistSetVideoId,
+                        params = seed.sourceParams,
+                        index = seed.sourceIndex,
+                        fallbackQuery = "${seed.channelTitle} ${seed.title}",
+                        maxResults = 80
+                    )
+                }
+                    .getOrDefault(emptyList())
+                    .asSequence()
+                    .filter(::isArtistShuffleSongCandidate)
+                    .filter { it.videoId != seed.videoId }
+                    .distinctBy { it.videoId ?: it.id }
+                    .toList()
+
+                if (candidates.isEmpty()) {
+                    showState("Radio started. No extra recommendations yet.")
+                    return@radioBuild
+                }
+
+                var loaded = 0
+                var added = 0
+                val total = candidates.size
+                candidates.forEach { candidate ->
+                    loaded += 1
+                    val playable = resolvePlayableSong(candidate)
+                    if (playable != null) {
+                        added += 1
+                        (activity as? MainActivity)?.appendSongsToCurrentQueue(listOf(playable))
+                    }
+                    showState("Building radio $loaded/$total...")
+                }
+                showState("Radio ready. Added $added recommendations.")
+            }
+        }
+    }
+
+    private suspend fun findRadioSeedItem(): YouTubeVideo? {
+        val currentPageSeed = loadedItems.firstOrNull(::isArtistShuffleSongCandidate)
+        if (currentPageSeed != null) return currentPageSeed
+
+        if (browseType == YouTubeItemType.ARTIST) {
+            val expanded = fetchAllArtistShuffleCandidates()
+            return expanded.firstOrNull()
+        }
+        return null
+    }
+
     private suspend fun fetchAllArtistShuffleCandidates(): List<YouTubeVideo> {
         val endpointKeys = linkedSetOf<Pair<String, String?>>()
         loadedItems.forEach { item ->
@@ -236,7 +315,7 @@ class YouTubeBrowseFragment : Fragment() {
                 section.contains("song", ignoreCase = true) &&
                 !item.sectionBrowseId.isNullOrBlank()
             ) {
-                endpointKeys += item.sectionBrowseId!! to item.sectionBrowseParams
+                endpointKeys += item.sectionBrowseId.orEmpty() to item.sectionBrowseParams
             }
         }
 
@@ -311,10 +390,69 @@ class YouTubeBrowseFragment : Fragment() {
 
     private fun onItemClicked(item: YouTubeVideo) {
         when {
+            !item.videoId.isNullOrBlank() && browseType == YouTubeItemType.ALBUM -> playAlbumFromTappedSong(item)
             !item.videoId.isNullOrBlank() -> playInApp(item)
             !item.browseId.isNullOrBlank() -> openNestedBrowse(item)
             else -> showToast("This item cannot be opened yet")
         }
+    }
+
+    private fun playAlbumFromTappedSong(tappedItem: YouTubeVideo) {
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            SharedPlayer.getOrCreate(requireContext()).pause()
+            showState("Loading album queue...")
+
+            val albumItems = albumSongItemsForQueue(tappedItem)
+            if (albumItems.isEmpty()) {
+                showToast("No playable album songs found")
+                showState("No playable album songs found.")
+                return@launch
+            }
+
+            val resolvedSongs = resolveSongsInParallel(albumItems)
+            if (resolvedSongs.isEmpty()) {
+                showToast("Could not start album playback")
+                showState("Unable to resolve playable album songs.")
+                return@launch
+            }
+
+            val startIndex = albumItems.indexOfFirst { it.videoId == tappedItem.videoId }
+                .coerceAtLeast(0)
+                .coerceAtMost(resolvedSongs.lastIndex)
+            (activity as? MainActivity)?.playTemporaryQueue(resolvedSongs, startIndex)
+            showState("Starting album playback...")
+        }
+    }
+
+    private fun albumSongItemsForQueue(tappedItem: YouTubeVideo): List<YouTubeVideo> {
+        val queued = loadedItems
+            .asSequence()
+            .filter(::isArtistShuffleSongCandidate)
+            .distinctBy { it.videoId ?: it.id }
+            .toMutableList()
+
+        val hasTapped = queued.any { it.videoId == tappedItem.videoId }
+        if (!hasTapped) {
+            queued.add(0, tappedItem)
+        }
+        return queued
+    }
+
+    private fun showItemMenu(item: YouTubeVideo, anchor: View) {
+        if (item.type != YouTubeItemType.ALBUM) return
+        val popup = PopupMenu(requireContext(), anchor)
+        popup.menu.add(0, MENU_OPEN_ALBUM, 0, "Open album")
+        popup.setOnMenuItemClickListener { menu ->
+            when (menu.itemId) {
+                MENU_OPEN_ALBUM -> {
+                    if (!item.browseId.isNullOrBlank()) openNestedBrowse(item) else showToast("Album page unavailable")
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
     }
 
     private fun openNestedBrowse(item: YouTubeVideo) {
@@ -409,6 +547,10 @@ class YouTubeBrowseFragment : Fragment() {
             dateAddedSeconds = System.currentTimeMillis() / 1000,
             path = streamUrl,
             sourceVideoId = videoId,
+            sourcePlaylistId = sourcePlaylistId,
+            sourcePlaylistSetVideoId = sourcePlaylistSetVideoId,
+            sourceParams = sourceParams,
+            sourceIndex = sourceIndex,
             albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(
                 rawUrl = forcedArtwork ?: thumbnailUrl,
                 videoId = videoId
@@ -506,6 +648,7 @@ class YouTubeBrowseFragment : Fragment() {
     }
 
     companion object {
+        private const val MENU_OPEN_ALBUM = 1
         private const val ARTIST_PAGE_PREFS = "blazing_music_artist_page_prefs"
         private const val KEY_SHOW_ARTIST_DESCRIPTION = "show_artist_description"
         private const val KEY_SHOW_ARTIST_SUBSCRIBERS = "show_artist_subscriber_count"

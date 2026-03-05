@@ -10,7 +10,8 @@ import coil.transform.RoundedCornersTransformation
 import com.blazinghotcode.blazingmusic.databinding.ItemYoutubeVideoBinding
 
 class YouTubeSearchAdapter(
-    private val onVideoClick: (YouTubeVideo) -> Unit
+    private val onVideoClick: (YouTubeVideo) -> Unit,
+    private val onItemMenuClick: (video: YouTubeVideo, anchor: android.view.View) -> Unit
 ) : ListAdapter<YouTubeVideo, YouTubeSearchAdapter.YouTubeVideoViewHolder>(Diff()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): YouTubeVideoViewHolder {
@@ -48,6 +49,12 @@ class YouTubeSearchAdapter(
                     transformations(RoundedCornersTransformation(14f))
                 }
             } ?: binding.ivVideoThumb.setImageResource(R.drawable.ml_library_music)
+            val showMenu = video.type == YouTubeItemType.SONG || video.type == YouTubeItemType.ALBUM
+            binding.btnItemMore.visibility = if (showMenu) android.view.View.VISIBLE else android.view.View.GONE
+            binding.btnItemMore.setOnClickListener(null)
+            if (showMenu) {
+                binding.btnItemMore.setOnClickListener { onItemMenuClick(video, binding.btnItemMore) }
+            }
             binding.root.setOnClickListener { onVideoClick(video) }
         }
     }

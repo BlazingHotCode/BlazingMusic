@@ -34,7 +34,7 @@
         android:textColor="@color/text_primary"
         android:textSize="14sp"
         android:textStyle="bold"
-        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btnItemMore"
         app:layout_constraintStart_toEndOf="@id/ivVideoThumb"
         app:layout_constraintTop_toTopOf="@id/ivVideoThumb"
         tools:text="Song title from YouTube" />
@@ -50,9 +50,22 @@
         android:maxLines="1"
         android:textColor="@color/text_secondary"
         android:textSize="12sp"
-        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btnItemMore"
         app:layout_constraintStart_toEndOf="@id/ivVideoThumb"
         app:layout_constraintTop_toBottomOf="@id/tvVideoTitle"
         tools:text="Channel name" />
+
+    <ImageButton
+        android:id="@+id/btnItemMore"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:background="@android:color/transparent"
+        android:contentDescription="More options"
+        android:padding="6dp"
+        android:src="@drawable/ml_more_vert"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/ivVideoThumb"
+        app:tint="@color/text_secondary" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

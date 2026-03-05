@@ -116,7 +116,10 @@ class YouTubeSearchFragment : Fragment() {
     }
 
     private fun setupList() {
-        adapter = YouTubeSearchAdapter { item -> onItemClicked(item) }
+        adapter = YouTubeSearchAdapter(
+            onVideoClick = { item -> onItemClicked(item) },
+            onItemMenuClick = { item, anchor -> showItemMenu(item, anchor) }
+        )
         rvResults.layoutManager = LinearLayoutManager(requireContext())
         rvResults.adapter = adapter
     }
@@ -191,6 +194,48 @@ class YouTubeSearchFragment : Fragment() {
         (activity as? MainActivity)?.openYouTubeBrowse(item)
     }
 
+    private fun showItemMenu(item: YouTubeVideo, anchor: View) {
+        val popup = PopupMenu(requireContext(), anchor)
+        when (item.type) {
+            YouTubeItemType.SONG -> {
+                popup.menu.add(0, MENU_PLAY_NOW, 0, "Play now")
+                popup.menu.add(0, MENU_PLAY_NEXT, 1, "Play next")
+                popup.menu.add(0, MENU_ADD_QUEUE, 2, "Add to queue")
+                popup.menu.add(0, MENU_SONG_RADIO_UP_NEXT, 3, "Song radio (Up next)")
+            }
+            YouTubeItemType.ALBUM -> {
+                popup.menu.add(0, MENU_OPEN_ALBUM, 0, "Open album")
+            }
+            else -> return
+        }
+        popup.setOnMenuItemClickListener { menu ->
+            when (menu.itemId) {
+                MENU_PLAY_NOW -> {
+                    playInApp(item)
+                    true
+                }
+                MENU_PLAY_NEXT -> {
+                    enqueueSong(item, playNext = true)
+                    true
+                }
+                MENU_ADD_QUEUE -> {
+                    enqueueSong(item, playNext = false)
+                    true
+                }
+                MENU_SONG_RADIO_UP_NEXT -> {
+                    startSongRadioUpNext(item)
+                    true
+                }
+                MENU_OPEN_ALBUM -> {
+                    if (!item.browseId.isNullOrBlank()) openBrowse(item) else showToast("Album page unavailable")
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+
     private fun updateBrowseUiState() {
         etQuery.visibility = View.VISIBLE
         btnSearch.visibility = View.VISIBLE
@@ -228,6 +273,91 @@ class YouTubeSearchFragment : Fragment() {
         }
     }
 
+    private fun enqueueSong(item: YouTubeVideo, playNext: Boolean) {
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            val song = resolvePlayableSong(item) ?: run {
+                showToast("Could not resolve this song")
+                return@launch
+            }
+            val host = activity as? MainActivity ?: return@launch
+            if (playNext) {
+                host.addSongToPlayNext(song)
+                showToast("Added to play next")
+            } else {
+                host.addSongToCurrentQueue(song)
+                showToast("Added to queue")
+            }
+        }
+    }
+
+    private fun startSongRadioUpNext(seedItem: YouTubeVideo) {
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            val seedVideoId = seedItem.videoId ?: run {
+                showToast("Radio unavailable for this item")
+                return@launch
+            }
+            val host = activity as? MainActivity ?: return@launch
+            showState("Building song radio...")
+
+            val candidates = runCatching {
+                apiClient.fetchRadioCandidates(
+                    videoId = seedVideoId,
+                    playlistId = seedItem.sourcePlaylistId,
+                    playlistSetVideoId = seedItem.sourcePlaylistSetVideoId,
+                    params = seedItem.sourceParams,
+                    index = seedItem.sourceIndex,
+                    fallbackQuery = "${seedItem.channelTitle} ${seedItem.title}",
+                    maxResults = 80
+                )
+            }
+                .getOrDefault(emptyList())
+                .asSequence()
+                .filter { it.videoId != seedVideoId }
+                .filter(::isRadioSongCandidate)
+                .distinctBy { it.videoId ?: it.id }
+                .toList()
+
+            val resolved = mutableListOf<Song>()
+            for (candidate in candidates) {
+                resolvePlayableSong(candidate)?.let { resolved += it }
+            }
+            if (resolved.isEmpty()) {
+                showToast("No radio recommendations found")
+                showState("No radio recommendations found.")
+                return@launch
+            }
+            host.replaceUpcomingQueue(resolved)
+            showToast("Radio ready (${resolved.size} up next)")
+            showState("Radio ready.")
+        }
+    }
+
+    private fun isRadioSongCandidate(item: YouTubeVideo): Boolean {
+        if (item.videoId.isNullOrBlank()) return false
+        if (item.type != YouTubeItemType.SONG) return false
+        val section = item.sectionTitle.orEmpty()
+        if (section.contains("video", ignoreCase = true)) return false
+        val text = "${item.title} ${item.channelTitle}".lowercase()
+        val blockedHints = listOf(
+            "official music video",
+            "music video",
+            "lyric video",
+            "lyrics video",
+            "visualizer"
+        )
+        return blockedHints.none { hint -> text.contains(hint) }
+    }
+
+    private suspend fun resolvePlayableSong(item: YouTubeVideo): Song? {
+        val videoId = item.videoId ?: return null
+        val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return null
+        val playable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
+        if (!playable) return null
+        return item.toSong(streamUrl)
+    }
+
     private fun YouTubeVideo.toSong(streamUrl: String): Song {
         val stableId = (id.hashCode().toLong() and 0x7fffffffL) + 10_000_000_000L
         val normalizedArtist = channelTitle.ifBlank { "YouTube Music" }
@@ -240,6 +370,10 @@ class YouTubeSearchFragment : Fragment() {
             dateAddedSeconds = System.currentTimeMillis() / 1000,
             path = streamUrl,
             sourceVideoId = videoId,
+            sourcePlaylistId = sourcePlaylistId,
+            sourcePlaylistSetVideoId = sourcePlaylistSetVideoId,
+            sourceParams = sourceParams,
+            sourceIndex = sourceIndex,
             albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(thumbnailUrl, videoId)
         )
     }
@@ -271,6 +405,14 @@ class YouTubeSearchFragment : Fragment() {
     private fun dp(value: Int): Int {
         val density = resources.displayMetrics.density
         return (value * density).toInt()
+    }
+
+    private companion object {
+        private const val MENU_PLAY_NOW = 1
+        private const val MENU_PLAY_NEXT = 2
+        private const val MENU_ADD_QUEUE = 3
+        private const val MENU_SONG_RADIO_UP_NEXT = 4
+        private const val MENU_OPEN_ALBUM = 5
     }
 
 }
