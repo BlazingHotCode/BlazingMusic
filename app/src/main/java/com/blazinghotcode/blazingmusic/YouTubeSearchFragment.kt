@@ -1,5 +1,7 @@
 package com.blazinghotcode.blazingmusic
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Build
 import android.text.Layout
@@ -217,6 +219,14 @@ class YouTubeSearchFragment : Fragment() {
                 showToast("Could not start playback for this track")
                 return@launch
             }
+            val streamPlayable = runCatching {
+                apiClient.isStreamPlayable(streamUrl)
+            }.getOrDefault(false)
+            if (!streamPlayable) {
+                showState("In-app stream blocked. Opening YouTube Music fallback.")
+                openInYouTubeMusic(videoId)
+                return@launch
+            }
 
             val playableSong = item.toSong(streamUrl)
             (activity as? MainActivity)?.playTemporaryQueue(listOf(playableSong), 0)
@@ -241,6 +251,22 @@ class YouTubeSearchFragment : Fragment() {
 
     private fun showToast(message: String) {
         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun openInYouTubeMusic(videoId: String) {
+        val context = context ?: return
+        val musicIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://music.youtube.com/watch?v=$videoId")
+        ).apply {
+            `package` = "com.google.android.apps.youtube.music"
+        }
+        if (musicIntent.resolveActivity(context.packageManager) == null) {
+            showToast("YouTube Music app not installed")
+            return
+        }
+        runCatching { startActivity(musicIntent) }
+            .onFailure { showToast("Unable to open YouTube Music") }
     }
 
     private fun showState(message: String) {

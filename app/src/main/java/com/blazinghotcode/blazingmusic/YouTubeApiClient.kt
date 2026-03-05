@@ -55,8 +55,13 @@ class YouTubeApiClient {
 
     suspend fun resolveAudioStreamUrl(videoId: String): String? {
         if (videoId.isBlank()) return null
+        YouTubeStreamResolver.resolveBestAudioUrl(videoId)?.let { extracted ->
+            Log.i(TAG, "Resolved stream with NewPipe extractor for $videoId")
+            return extracted
+        }
+
         val body = JSONObject()
-            .put("context", contextObject())
+            .put("context", contextObjectAndroid())
             .put("videoId", videoId)
             .put("playbackContext", JSONObject().put(
                 "contentPlaybackContext",
@@ -65,12 +70,26 @@ class YouTubeApiClient {
             .put("racyCheckOk", true)
             .put("contentCheckOk", true)
 
-        val response = post("player", body) ?: return null
+        val response = post(
+            path = "player",
+            body = body,
+            clientName = ANDROID_CLIENT_NAME,
+            clientVersion = ANDROID_CLIENT_VERSION,
+            clientId = ANDROID_CLIENT_ID,
+            userAgent = USER_AGENT_ANDROID
+        ) ?: return null
+        val playability = response.optJSONObject("playabilityStatus")?.optString("status", "UNKNOWN").orEmpty()
+        if (playability != "OK") {
+            Log.w(TAG, "Player resolve not playable for $videoId: $playability")
+            return null
+        }
         val streamingData = response.optJSONObject("streamingData") ?: return null
         val adaptiveFormats = streamingData.optJSONArray("adaptiveFormats") ?: JSONArray()
         val formats = streamingData.optJSONArray("formats") ?: JSONArray()
 
-        val chosen = pickBestAudioFormat(adaptiveFormats)
+        val chosen = pickBestAudioFormat(adaptiveFormats, preferMimePrefix = "audio/mp4")
+            ?: pickBestAudioFormat(formats, preferMimePrefix = "audio/mp4")
+            ?: pickBestAudioFormat(adaptiveFormats)
             ?: pickBestAudioFormat(formats)
             ?: return null
 
@@ -90,7 +109,47 @@ class YouTubeApiClient {
         return null
     }
 
+    suspend fun isStreamPlayable(url: String): Boolean {
+        if (url.isBlank()) return false
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 10_000
+                    readTimeout = 10_000
+                    setRequestProperty("User-Agent", USER_AGENT_ANDROID)
+                    setRequestProperty("Range", "bytes=0-1")
+                    instanceFollowRedirects = true
+                }
+                try {
+                    val code = connection.responseCode
+                    code in 200..399
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrDefault(false)
+        }
+    }
+
     private suspend fun post(path: String, body: JSONObject): JSONObject? {
+        return post(
+            path = path,
+            body = body,
+            clientName = WEB_REMIX_CLIENT_NAME,
+            clientVersion = WEB_REMIX_CLIENT_VERSION,
+            clientId = WEB_REMIX_CLIENT_ID,
+            userAgent = USER_AGENT_WEB
+        )
+    }
+
+    private suspend fun post(
+        path: String,
+        body: JSONObject,
+        clientName: String,
+        clientVersion: String,
+        clientId: String,
+        userAgent: String
+    ): JSONObject? {
         return withContext(Dispatchers.IO) {
             val url = URL("$INNER_TUBE_BASE/$path?prettyPrint=false")
             val connection = (url.openConnection() as HttpURLConnection).apply {
@@ -102,9 +161,9 @@ class YouTubeApiClient {
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("Origin", "https://music.youtube.com")
                 setRequestProperty("Referer", "https://music.youtube.com/")
-                setRequestProperty("User-Agent", USER_AGENT_WEB)
-                setRequestProperty("X-YouTube-Client-Name", WEB_REMIX_CLIENT_ID)
-                setRequestProperty("X-YouTube-Client-Version", WEB_REMIX_CLIENT_VERSION)
+                setRequestProperty("User-Agent", userAgent)
+                setRequestProperty("X-YouTube-Client-Name", clientId)
+                setRequestProperty("X-YouTube-Client-Version", clientVersion)
             }
             try {
                 connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body.toString()) }
@@ -131,6 +190,18 @@ class YouTubeApiClient {
             JSONObject()
                 .put("clientName", WEB_REMIX_CLIENT_NAME)
                 .put("clientVersion", WEB_REMIX_CLIENT_VERSION)
+                .put("hl", "en")
+                .put("gl", "US")
+        )
+    }
+
+    private fun contextObjectAndroid(): JSONObject {
+        return JSONObject().put(
+            "client",
+            JSONObject()
+                .put("clientName", ANDROID_CLIENT_NAME)
+                .put("clientVersion", ANDROID_CLIENT_VERSION)
+                .put("androidSdkVersion", 35)
                 .put("hl", "en")
                 .put("gl", "US")
         )
@@ -368,13 +439,17 @@ class YouTubeApiClient {
         return null
     }
 
-    private fun pickBestAudioFormat(formats: JSONArray): JSONObject? {
+    private fun pickBestAudioFormat(
+        formats: JSONArray,
+        preferMimePrefix: String? = null
+    ): JSONObject? {
         var best: JSONObject? = null
         var bestBitrate = -1
         for (i in 0 until formats.length()) {
             val format = formats.optJSONObject(i) ?: continue
             val mimeType = format.optString("mimeType", "")
             if (!mimeType.startsWith("audio/")) continue
+            if (preferMimePrefix != null && !mimeType.startsWith(preferMimePrefix)) continue
             val bitrate = format.optInt("bitrate", 0)
             if (bitrate > bestBitrate) {
                 best = format
@@ -423,8 +498,13 @@ class YouTubeApiClient {
         private const val WEB_REMIX_CLIENT_ID = "67"
         private const val WEB_REMIX_CLIENT_NAME = "WEB_REMIX"
         private const val WEB_REMIX_CLIENT_VERSION = "1.20260213.01.00"
+        private const val ANDROID_CLIENT_ID = "3"
+        private const val ANDROID_CLIENT_NAME = "ANDROID"
+        private const val ANDROID_CLIENT_VERSION = "21.03.38"
         private const val FILTER_SONG = "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D"
         private const val USER_AGENT_WEB =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+        private const val USER_AGENT_ANDROID =
+            "com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip"
     }
 }
