@@ -98,7 +98,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginEnd="16dp"
-        android:text="All"
+        android:text="@string/youtube_search_default_filter_display_name"
         android:textAllCaps="false"
         app:layout_constraintBottom_toBottomOf="@id/tvSongsOnlyLabel"
         app:layout_constraintEnd_toEndOf="parent"

@@ -61,6 +61,7 @@ class YouTubeSearchFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        selectedFilter = YouTubeSearchFilter.defaultFromResources(resources)
         bindViews(view)
         applyHeaderInsets(view)
         setupList()

@@ -48,6 +48,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_youtube_search)
+        selectedFilter = YouTubeSearchFilter.defaultFromResources(resources)
 
         bindViews()
         setupList()
