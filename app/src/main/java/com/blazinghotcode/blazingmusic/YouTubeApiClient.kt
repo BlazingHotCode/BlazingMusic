@@ -55,9 +55,20 @@ class YouTubeApiClient(
                 if (!songsOnly) {
                     parsed.take(maxResults.coerceIn(1, 50))
                 } else {
-                    parsed
-                        .sortedByDescending { if (isLikelyReleaseSource(it)) 1 else 0 }
-                        .take(maxResults.coerceIn(1, 50))
+                    val scored = parsed
+                        .map { it to songLikelihoodScore(it) }
+                        .filter { (_, score) -> score > 0 }
+                        .sortedByDescending { (_, score) -> score }
+                        .map { (video, _) -> video }
+
+                    if (scored.isNotEmpty()) {
+                        scored.take(maxResults.coerceIn(1, 50))
+                    } else {
+                        // Soft fallback: if strict song scoring finds nothing, still prefer release-like sources.
+                        parsed
+                            .sortedByDescending { songLikelihoodScore(it) }
+                            .take(maxResults.coerceIn(1, 50))
+                    }
                 }
             } finally {
                 connection.disconnect()
@@ -94,13 +105,38 @@ class YouTubeApiClient(
         return videos
     }
 
-    private fun isLikelyReleaseSource(video: YouTubeVideo): Boolean {
+    private fun songLikelihoodScore(video: YouTubeVideo): Int {
         val channel = video.channelTitle.lowercase()
         val title = video.title.lowercase()
-        return channel.endsWith(" - topic") ||
-            channel.contains("release") ||
-            title.contains("official audio") ||
-            title.contains("provided to youtube by")
+        var score = 0
+
+        // Positive release/audio signals.
+        if (channel.endsWith(" - topic")) score += 120
+        if (channel.contains("release")) score += 80
+        if (title.contains("provided to youtube by")) score += 70
+        if (title.contains("official audio")) score += 60
+        if (title.contains("audio")) score += 15
+        if (title.contains("single version")) score += 25
+
+        // Strong negative signals for non-song uploads.
+        if (title.contains("reaction")) score -= 120
+        if (title.contains("tutorial")) score -= 120
+        if (title.contains("interview")) score -= 120
+        if (title.contains("podcast")) score -= 100
+        if (title.contains("vlog")) score -= 100
+        if (title.contains("teaser")) score -= 90
+        if (title.contains("trailer")) score -= 90
+        if (title.contains("live")) score -= 80
+        if (title.contains("concert")) score -= 80
+        if (title.contains("cover")) score -= 70
+        if (title.contains("karaoke")) score -= 70
+        if (title.contains("music video")) score -= 55
+        if (title.contains("official video")) score -= 55
+        if (title.contains("lyric video")) score -= 45
+        if (title.contains("shorts")) score -= 45
+        if (title.contains("mix")) score -= 30
+
+        return score
     }
 
     private fun decodeHtmlEntities(raw: String): String {
