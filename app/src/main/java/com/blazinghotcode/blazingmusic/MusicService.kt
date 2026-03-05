@@ -10,12 +10,14 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
 /**
  * Foreground MediaSession service for background playback and system media controls.
  */
+@UnstableApi
 class MusicService : MediaSessionService() {
 
     companion object {
@@ -67,6 +69,7 @@ class MusicService : MediaSessionService() {
 
     // Retain explicit support for custom seek actions from existing pending intents.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
         val player = mediaSession?.player
         when (intent?.action) {
             PlaybackNotificationManager.ACTION_SEEK_BACK -> {
