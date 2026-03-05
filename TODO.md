@@ -15,7 +15,7 @@
 13. [x] Build queue controls: drag to reorder, swipe to remove, and "play next."
 14. [x] Persist queue + current index across app restarts.
 15. [x] Add playlist creation and management (create, rename, delete playlists; add/remove songs).
-16. [ ] Add sort options: title, artist, album, duration, recently added.
+16. [x] Add sort options: title, artist, album, duration, recently added.
 17. [ ] Add a clear "currently playing" indicator in the main song list.
 18. [ ] Add "Up Next" section in mini-player (next 3 songs).
 19. [ ] Open a full-screen player when tapping the mini-player.

@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvTotalTime: TextView
     private lateinit var etSearch: EditText
+    private lateinit var btnSortSongs: Button
     private var allSongs: List<Song> = emptyList()
     private var playlists: List<Playlist> = emptyList()
     private var queueSongs: List<Song> = emptyList()
@@ -81,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private var queueEditorAdapter: QueueEditorAdapter? = null
     private var isQueueDragInProgress = false
     private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var currentSongSort = SongSortOption.TITLE
     private val handler = Handler(Looper.getMainLooper())
     private val updateSeekbarRunnable = object : Runnable {
         override fun run() {
@@ -147,6 +149,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvTotalTime = findViewById(R.id.tvTotalTime)
         etSearch = findViewById(R.id.etSearch)
+        btnSortSongs = findViewById(R.id.btnSortSongs)
         playlistContainer = findViewById(R.id.playlistContainer)
         tintSearchStartIcon()
         applySystemInsets()
@@ -158,7 +161,9 @@ class MainActivity : AppCompatActivity() {
                 if (viewModel.isShuffleEnabled.value == true) {
                     viewModel.toggleShuffle()
                 }
-                viewModel.playSong(song)
+                val currentOrderedSongs = songAdapter.currentList.toList()
+                val queueSource = if (currentOrderedSongs.isNotEmpty()) currentOrderedSongs else allSongs
+                viewModel.playSongFromQueue(song, queueSource)
             },
             onSongMenuClick = { song, anchor ->
                 showSongOptionsMenu(song, anchor)
@@ -217,12 +222,14 @@ class MainActivity : AppCompatActivity() {
     private fun setupPlaylistControls() {
         navHome.setOnClickListener { openHomeTab() }
         navPlaylists.setOnClickListener { openPlaylistsTab() }
+        btnSortSongs.setOnClickListener { showSongSortOptions() }
+        updateSortButtonLabel()
     }
 
     private fun observeViewModel() {
         viewModel.songs.observe(this) { songs ->
             allSongs = songs
-            songAdapter.submitList(songs)
+            applySongListPresentation()
         }
 
         viewModel.currentSong.observe(this) { song ->
@@ -708,18 +715,72 @@ class MainActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                val query = s?.toString()?.lowercase() ?: ""
-                val filtered = if (query.isEmpty()) {
-                    allSongs
-                } else {
-                    allSongs.filter {
-                        it.title.lowercase().contains(query) ||
-                            it.artist.lowercase().contains(query)
-                    }
-                }
-                songAdapter.submitList(filtered)
+                applySongListPresentation()
             }
         })
+    }
+
+    private fun showSongSortOptions() {
+        val options = SongSortOption.entries
+        showSimpleBottomSheet(
+            title = "Sort songs",
+            items = options.map { it.label }
+        ) { index ->
+            val selected = options.getOrNull(index) ?: return@showSimpleBottomSheet
+            currentSongSort = selected
+            updateSortButtonLabel()
+            applySongListPresentation(preserveScrollOffset = true)
+        }
+    }
+
+    private fun updateSortButtonLabel() {
+        btnSortSongs.text = currentSongSort.label
+    }
+
+    private fun applySongListPresentation(preserveScrollOffset: Boolean = false) {
+        val previousOffset = if (preserveScrollOffset) rvSongs.computeVerticalScrollOffset() else 0
+        val query = etSearch.text?.toString()?.trim()?.lowercase().orEmpty()
+        val filtered = if (query.isEmpty()) {
+            allSongs
+        } else {
+            allSongs.filter {
+                it.title.lowercase().contains(query) ||
+                    it.artist.lowercase().contains(query) ||
+                    it.album.lowercase().contains(query)
+            }
+        }
+        val sorted = when (currentSongSort) {
+            SongSortOption.TITLE -> filtered.sortedWith(
+                compareBy<Song> { it.title.lowercase() }
+                    .thenBy { it.artist.lowercase() }
+            )
+            SongSortOption.ARTIST -> filtered.sortedWith(
+                compareBy<Song> { it.artist.lowercase() }
+                    .thenBy { it.title.lowercase() }
+            )
+            SongSortOption.ALBUM -> filtered.sortedWith(
+                compareBy<Song> { it.album.lowercase() }
+                    .thenBy { it.title.lowercase() }
+            )
+            SongSortOption.DURATION -> filtered.sortedWith(
+                compareByDescending<Song> { it.duration }
+                    .thenBy { it.title.lowercase() }
+            )
+            SongSortOption.RECENTLY_ADDED -> filtered.sortedWith(
+                compareByDescending<Song> { it.dateAddedSeconds }
+                    .thenBy { it.title.lowercase() }
+            )
+        }
+        if (preserveScrollOffset) {
+            songAdapter.submitList(sorted) {
+                rvSongs.post {
+                    val currentOffset = rvSongs.computeVerticalScrollOffset()
+                    rvSongs.scrollBy(0, previousOffset - currentOffset)
+                }
+            }
+        } else {
+            songAdapter.submitList(sorted)
+        }
     }
 
     private fun tintSearchStartIcon() {
@@ -1293,5 +1354,13 @@ class MainActivity : AppCompatActivity() {
             val checkBox: CheckBox,
             val label: TextView
         ) : RecyclerView.ViewHolder(itemView)
+    }
+
+    private enum class SongSortOption(val label: String) {
+        TITLE("Title"),
+        ARTIST("Artist"),
+        ALBUM("Album"),
+        DURATION("Duration"),
+        RECENTLY_ADDED("Recent")
     }
 }

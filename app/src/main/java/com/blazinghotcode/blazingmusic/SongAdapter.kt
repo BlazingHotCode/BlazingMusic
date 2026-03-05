@@ -34,14 +34,14 @@ class SongAdapter(
 
         init {
             binding.root.setOnClickListener {
-                val position = adapterPosition
+                val position = bindingAdapterPosition
                 if (position != RecyclerView.NO_POSITION) {
                     onSongClick(getItem(position))
                 }
             }
 
             binding.btnSongMore.setOnClickListener { anchor ->
-                val position = adapterPosition
+                val position = bindingAdapterPosition
                 if (position != RecyclerView.NO_POSITION) {
                     onSongMenuClick(getItem(position), anchor)
                 }

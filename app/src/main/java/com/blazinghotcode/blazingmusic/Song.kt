@@ -6,6 +6,7 @@ data class Song (
     val artist: String,
     val album: String,
     val duration: Long,
+    val dateAddedSeconds: Long,
     val path: String,
     val albumArtUri: String?
 )
