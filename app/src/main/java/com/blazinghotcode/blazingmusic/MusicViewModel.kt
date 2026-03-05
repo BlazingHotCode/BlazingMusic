@@ -28,6 +28,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREFS_NAME = "blazing_music_prefs"
         private const val KEY_QUEUE_IDS = "queue_ids"
         private const val KEY_QUEUE_PATHS = "queue_paths"
+        private const val KEY_QUEUE_SONGS_JSON = "queue_songs_json"
         private const val KEY_CURRENT_QUEUE_INDEX = "current_queue_index"
         private const val KEY_CURRENT_POSITION_MS = "current_position_ms"
         private const val KEY_PLAYLISTS_JSON = "playlists_json"
@@ -619,8 +620,24 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun persistQueueState(positionOverrideMs: Long? = null) {
         val positionMs = (positionOverrideMs ?: exoPlayer?.currentPosition ?: 0L).coerceAtLeast(0L)
+        val queueSongsJson = JSONArray().apply {
+            activeQueue.forEach { song ->
+                put(
+                    JSONObject()
+                        .put("id", song.id)
+                        .put("title", song.title)
+                        .put("artist", song.artist)
+                        .put("album", song.album)
+                        .put("duration", song.duration)
+                        .put("date_added_seconds", song.dateAddedSeconds)
+                        .put("path", song.path)
+                        .put("album_art_uri", song.albumArtUri)
+                )
+            }
+        }
         // Use song path for durable restore across potential MediaStore ID changes.
         prefs.edit()
+            .putString(KEY_QUEUE_SONGS_JSON, queueSongsJson.toString())
             .putString(KEY_QUEUE_PATHS, activeQueue.joinToString("\n") { it.path })
             .putString(KEY_QUEUE_IDS, activeQueue.joinToString(",") { it.id.toString() }) // legacy fallback
             .putInt(KEY_CURRENT_QUEUE_INDEX, currentQueueIndexInternal)
@@ -789,6 +806,36 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun restorePersistedQueue(allSongs: List<Song>): Pair<List<Song>?, Int> {
         val savedIndex = prefs.getInt(KEY_CURRENT_QUEUE_INDEX, -1)
+
+        val savedQueueSongsJson = prefs.getString(KEY_QUEUE_SONGS_JSON, null)
+        if (!savedQueueSongsJson.isNullOrBlank()) {
+            val restoredSongs = runCatching {
+                val jsonArray = JSONArray(savedQueueSongsJson)
+                buildList {
+                    for (i in 0 until jsonArray.length()) {
+                        val json = jsonArray.optJSONObject(i) ?: continue
+                        val path = json.optString("path", "").trim()
+                        if (path.isEmpty()) continue
+                        add(
+                            Song(
+                                id = json.optLong("id", 0L),
+                                title = json.optString("title", ""),
+                                artist = json.optString("artist", ""),
+                                album = json.optString("album", ""),
+                                duration = json.optLong("duration", 0L),
+                                dateAddedSeconds = json.optLong("date_added_seconds", 0L),
+                                path = path,
+                                albumArtUri = json.optString("album_art_uri", "").ifBlank { null }
+                            )
+                        )
+                    }
+                }
+            }.getOrDefault(emptyList())
+
+            if (restoredSongs.isNotEmpty()) {
+                return Pair(restoredSongs.distinctBy { it.path }, savedIndex)
+            }
+        }
 
         val savedPaths = prefs.getString(KEY_QUEUE_PATHS, null)
         if (!savedPaths.isNullOrBlank()) {
