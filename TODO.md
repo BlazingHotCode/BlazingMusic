@@ -20,7 +20,7 @@
 18. [x] Add a clear "currently playing" indicator in the main song list.
 19. [x] Open a full-screen player when tapping the mini-player.
 20. [x] Add media notification player controls via `MediaStyle` notification actions: previous, play/pause, next, seek.
-21. [ ] Add lock-screen player metadata/controls driven by `MediaSession` metadata and playback state updates.
+21. [x] Add lock-screen player metadata/controls driven by `MediaSession` metadata and playback state updates.
 22. [ ] Request and handle POST_NOTIFICATIONS permission on Android 13+.
 23. [ ] Debounce search input for smoother filtering on large libraries.
 24. [ ] Add fast-scrolling and alphabetical indexing in song list.
