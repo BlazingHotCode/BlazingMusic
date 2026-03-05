@@ -527,6 +527,8 @@ class MainActivity : AppCompatActivity() {
                 it.albumArtUri?.let { uri ->
                     ivAlbumArt.load(uri) {
                         crossfade(true)
+                        placeholder(R.drawable.ml_library_music)
+                        error(R.drawable.ml_library_music)
                         transformations(RoundedCornersTransformation(20f))
                     }
                 } ?: run {

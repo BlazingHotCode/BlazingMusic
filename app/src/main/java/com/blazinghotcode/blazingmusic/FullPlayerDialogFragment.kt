@@ -313,6 +313,8 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
             song.albumArtUri?.let { uri ->
                 ivAlbumArt.load(uri) {
                     crossfade(true)
+                    placeholder(R.drawable.ml_library_music)
+                    error(R.drawable.ml_library_music)
                     transformations(RoundedCornersTransformation(28f))
                 }
             } ?: ivAlbumArt.setImageResource(R.drawable.ml_library_music)

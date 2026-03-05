@@ -31,7 +31,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
     private var activeJob: Job? = null
 
     private var lastQuery: String = ""
-    private var lastSongsOnly: Boolean = true
+    private var lastSongsOnly: Boolean = false
     private var lastSearchResults: List<YouTubeVideo> = emptyList()
     private val browseStack = mutableListOf<BrowseRequest>()
 
@@ -206,7 +206,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
             duration = 0L,
             dateAddedSeconds = System.currentTimeMillis() / 1000,
             path = streamUrl,
-            albumArtUri = thumbnailUrl
+            albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(thumbnailUrl, videoId)
         )
     }
 
