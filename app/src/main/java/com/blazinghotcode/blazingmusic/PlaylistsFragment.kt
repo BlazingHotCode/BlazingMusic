@@ -11,6 +11,7 @@ import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -111,6 +112,7 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
             menu.add(Menu.NONE, 1, Menu.NONE, "Open")
             menu.add(Menu.NONE, 2, Menu.NONE, "Rename")
             menu.add(Menu.NONE, 3, Menu.NONE, "Delete")
+            menu.add(Menu.NONE, 4, Menu.NONE, "Select multiple")
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     1 -> {
@@ -125,10 +127,46 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
                         showDeletePlaylistDialog(playlist)
                         true
                     }
+                    4 -> {
+                        showMultiSelectPlaylistsDialog()
+                        true
+                    }
                     else -> false
                 }
             }
             show()
+        }
+    }
+
+    private fun showMultiSelectPlaylistsDialog() {
+        if (allPlaylists.isEmpty()) {
+            showToast("No playlists yet")
+            return
+        }
+        showMultiSelectBottomSheet(
+            title = "Select playlists",
+            items = allPlaylists.map {
+                val songsWord = if (it.songPaths.size == 1) "song" else "songs"
+                "${it.name} (${it.songPaths.size} $songsWord)"
+            },
+            confirmLabel = "Delete selected"
+        ) { selectedIndices ->
+            val selected = allPlaylists.filterIndexed { index, _ -> selectedIndices.contains(index) }
+            if (selected.isEmpty()) {
+                showToast("No playlists selected")
+                return@showMultiSelectBottomSheet
+            }
+            var deletedCount = 0
+            selected.forEach { playlist ->
+                if (viewModel.deletePlaylist(playlist.id)) {
+                    deletedCount += 1
+                }
+            }
+            if (deletedCount > 0) {
+                showToast("Deleted $deletedCount playlists")
+            } else {
+                showToast("No playlists deleted")
+            }
         }
     }
 
@@ -295,7 +333,129 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
         sheet.show()
     }
 
+    private fun showMultiSelectBottomSheet(
+        title: String,
+        items: List<String>,
+        confirmLabel: String,
+        onConfirm: (Set<Int>) -> Unit
+    ) {
+        val context = requireContext()
+        val sheet = BottomSheetDialog(context, R.style.ThemeOverlay_BlazingMusic_BottomSheet)
+        val adapter = MultiSelectAdapter(items)
+        val list = RecyclerView(context).apply {
+            layoutManager = LinearLayoutManager(context)
+            this.adapter = adapter
+            clipToPadding = false
+            setPadding(dp(16), dp(4), dp(16), dp(10))
+        }
+        val titleView = TextView(context).apply {
+            text = title
+            setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(20), dp(18), dp(20), dp(4))
+        }
+        val controls = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            val cancel = Button(context).apply {
+                text = "Cancel"
+                setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setOnClickListener { sheet.dismiss() }
+            }
+            val confirm = Button(context).apply {
+                text = confirmLabel
+                setTextColor(ContextCompat.getColor(context, R.color.accent_lavender))
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setOnClickListener {
+                    sheet.dismiss()
+                    onConfirm(adapter.selectedPositions())
+                }
+            }
+            addView(cancel)
+            addView(confirm)
+            setPadding(0, 0, dp(12), dp(10))
+        }
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(titleView)
+            addView(list, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(controls)
+        }
+        sheet.setContentView(root)
+        sheet.show()
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private class MultiSelectAdapter(
+        private val items: List<String>
+    ) : RecyclerView.Adapter<MultiSelectAdapter.MultiSelectViewHolder>() {
+
+        private val selected = mutableSetOf<Int>()
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MultiSelectViewHolder {
+            val context = parent.context
+            val density = context.resources.displayMetrics.density
+            val horizontal = (14 * density).toInt()
+            val vertical = (10 * density).toInt()
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(horizontal, vertical, horizontal, vertical)
+                background = ContextCompat.getDrawable(context, R.drawable.bg_queue_item)
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val checkBox = CheckBox(context)
+            val label = TextView(context).apply {
+                setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setPadding((6 * density).toInt(), 0, 0, 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            }
+            row.addView(checkBox)
+            row.addView(label)
+            return MultiSelectViewHolder(row, checkBox, label)
+        }
+
+        override fun onBindViewHolder(holder: MultiSelectViewHolder, position: Int) {
+            holder.label.text = items[position]
+            holder.checkBox.setOnCheckedChangeListener(null)
+            holder.checkBox.isChecked = selected.contains(position)
+            holder.itemView.setOnClickListener {
+                val newChecked = !holder.checkBox.isChecked
+                holder.checkBox.isChecked = newChecked
+                if (newChecked) selected.add(position) else selected.remove(position)
+            }
+            holder.checkBox.setOnCheckedChangeListener { _, checked ->
+                if (checked) selected.add(position) else selected.remove(position)
+            }
+            val params = holder.itemView.layoutParams as RecyclerView.LayoutParams
+            params.bottomMargin = (6 * holder.itemView.resources.displayMetrics.density).toInt()
+            holder.itemView.layoutParams = params
+        }
+
+        override fun getItemCount(): Int = items.size
+
+        fun selectedPositions(): Set<Int> = selected.toSet()
+
+        class MultiSelectViewHolder(
+            itemView: View,
+            val checkBox: CheckBox,
+            val label: TextView
+        ) : RecyclerView.ViewHolder(itemView)
+    }
 
     private fun tintSearchStartIcon() {
         val drawables = etSearchPlaylists.compoundDrawablesRelative

@@ -176,6 +176,9 @@ class MainActivity : AppCompatActivity() {
             },
             onSongMenuClick = { song, anchor ->
                 showSongOptionsMenu(song, anchor)
+            },
+            onSelectionStateChanged = { isSelectionMode, selectedCount ->
+                updateHomeSelectionUi(isSelectionMode, selectedCount)
             }
         )
         rvSongs.apply {
@@ -231,7 +234,13 @@ class MainActivity : AppCompatActivity() {
     private fun setupPlaylistControls() {
         navHome.setOnClickListener { openHomeTab() }
         navPlaylists.setOnClickListener { openPlaylistsTab() }
-        btnSortSongs.setOnClickListener { showSongSortOptions() }
+        btnSortSongs.setOnClickListener {
+            if (songAdapter.isSelectionMode()) {
+                showHomeSelectionActions()
+            } else {
+                showSongSortOptions()
+            }
+        }
         updateSortButtonLabel()
     }
 
@@ -444,6 +453,7 @@ class MainActivity : AppCompatActivity() {
             menu.add(Menu.NONE, 2, Menu.NONE, "Play next")
             menu.add(Menu.NONE, 1, Menu.NONE, "Add to queue")
             menu.add(Menu.NONE, 3, Menu.NONE, "Add to playlist")
+            menu.add(Menu.NONE, 4, Menu.NONE, "Select multiple")
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     1 -> {
@@ -458,10 +468,87 @@ class MainActivity : AppCompatActivity() {
                         showAddSongToPlaylistDialog(song)
                         true
                     }
+                    4 -> {
+                        songAdapter.enterSelectionMode(song)
+                        true
+                    }
                     else -> false
                 }
             }
             show()
+        }
+    }
+
+    private fun showHomeSelectionActions() {
+        val selectedSongs = songAdapter.getSelectedSongs()
+        if (selectedSongs.isEmpty()) {
+            showToast("No songs selected")
+            songAdapter.exitSelectionMode()
+            return
+        }
+        PopupMenu(ContextThemeWrapper(this, R.style.ThemeOverlay_BlazingMusic_PopupMenu), btnSortSongs).apply {
+            menu.add(Menu.NONE, 1, Menu.NONE, "Add to queue")
+            menu.add(Menu.NONE, 2, Menu.NONE, "Play next")
+            menu.add(Menu.NONE, 3, Menu.NONE, "Add to playlist")
+            menu.add(Menu.NONE, 4, Menu.NONE, "Cancel selection")
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    1 -> {
+                        selectedSongs.forEach { viewModel.addSongToQueue(it) }
+                        showToast("Added ${selectedSongs.size} songs to queue")
+                        songAdapter.exitSelectionMode()
+                        true
+                    }
+                    2 -> {
+                        selectedSongs.asReversed().forEach { viewModel.addSongToPlayNext(it) }
+                        showToast("Queued ${selectedSongs.size} songs to play next")
+                        songAdapter.exitSelectionMode()
+                        true
+                    }
+                    3 -> {
+                        showAddMultipleSongsToPlaylistDialog(selectedSongs)
+                        songAdapter.exitSelectionMode()
+                        true
+                    }
+                    4 -> {
+                        songAdapter.exitSelectionMode()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
+    }
+
+    private fun showAddMultipleSongsToPlaylistDialog(selectedSongs: List<Song>) {
+        if (playlists.isEmpty()) {
+            showToast("No playlists yet")
+            return
+        }
+        showSimpleBottomSheet(
+            title = "Add ${selectedSongs.size} songs to playlist",
+            items = playlists.map { it.name }
+        ) { index ->
+            val playlist = playlists.getOrNull(index) ?: return@showSimpleBottomSheet
+            val addedCount = viewModel.addSongsToPlaylist(playlist.id, selectedSongs)
+            if (addedCount > 0) {
+                showToast("Added $addedCount songs to ${playlist.name}")
+            } else {
+                showToast("No new songs added")
+            }
+        }
+    }
+
+    private fun updateHomeSelectionUi(isSelectionMode: Boolean, selectedCount: Int) {
+        if (!isSelectionMode) {
+            updateSortButtonLabel()
+            return
+        }
+        btnSortSongs.text = if (selectedCount > 0) {
+            "Actions ($selectedCount)"
+        } else {
+            "Actions"
         }
     }
 
@@ -941,6 +1028,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleAppBackPress(): Boolean {
+        if (songAdapter.isSelectionMode()) {
+            songAdapter.exitSelectionMode()
+            return true
+        }
         if (playlistContainer.visibility == View.VISIBLE) {
             if (supportFragmentManager.backStackEntryCount > 0) {
                 supportFragmentManager.popBackStack()

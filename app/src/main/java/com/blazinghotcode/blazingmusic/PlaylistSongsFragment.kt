@@ -144,6 +144,9 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             },
             onSongMenuClick = { song, anchor ->
                 showSongOptionsMenu(song, anchor)
+            },
+            onSelectionStateChanged = { isSelectionMode, selectedCount ->
+                updatePlaylistSelectionUi(isSelectionMode, selectedCount)
             }
         )
 
@@ -290,6 +293,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             menu.add(Menu.NONE, 1, Menu.NONE, "Play next")
             menu.add(Menu.NONE, 2, Menu.NONE, "Add to queue")
             menu.add(Menu.NONE, 3, Menu.NONE, "Remove from playlist")
+            menu.add(Menu.NONE, 4, Menu.NONE, "Select multiple")
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     1 -> {
@@ -305,8 +309,36 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
                         if (removed > 0) showToast("Removed from playlist") else showToast("Unable to remove")
                         true
                     }
+                    4 -> {
+                        songAdapter.enterSelectionMode(song)
+                        true
+                    }
                     else -> false
                 }
+            }
+            show()
+        }
+    }
+
+    private fun showAddMultipleSongsToPlaylistDialog(selectedSongs: List<Song>) {
+        val playlists = viewModel.playlists.value.orEmpty()
+        if (playlists.isEmpty()) {
+            showToast("No playlists yet")
+            return
+        }
+        androidx.appcompat.widget.PopupMenu(
+            ContextThemeWrapper(requireContext(), R.style.ThemeOverlay_BlazingMusic_PopupMenu),
+            btnSortList
+        ).apply {
+            playlists.forEachIndexed { index, playlist ->
+                menu.add(Menu.NONE, index + 1, Menu.NONE, playlist.name)
+            }
+            setOnMenuItemClickListener { item ->
+                val playlist = playlists.getOrNull(item.itemId - 1) ?: return@setOnMenuItemClickListener false
+                val added = viewModel.addSongsToPlaylist(playlist.id, selectedSongs)
+                if (added > 0) showToast("Added $added songs to ${playlist.name}")
+                else showToast("No new songs added")
+                true
             }
             show()
         }
@@ -345,6 +377,10 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     }
 
     private fun showSortOptionsMenu() {
+        if (songAdapter.isSelectionMode()) {
+            showPlaylistSelectionActions()
+            return
+        }
         androidx.appcompat.widget.PopupMenu(
             ContextThemeWrapper(requireContext(), R.style.ThemeOverlay_BlazingMusic_PopupMenu),
             btnSortList
@@ -367,6 +403,74 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
     private fun updateSortButtonLabel() {
         btnSortList.text = currentSongSort.label
+    }
+
+    private fun showPlaylistSelectionActions() {
+        val selectedSongs = songAdapter.getSelectedSongs()
+        if (selectedSongs.isEmpty()) {
+            showToast("No songs selected")
+            songAdapter.exitSelectionMode()
+            return
+        }
+        androidx.appcompat.widget.PopupMenu(
+            ContextThemeWrapper(requireContext(), R.style.ThemeOverlay_BlazingMusic_PopupMenu),
+            btnSortList
+        ).apply {
+            menu.add(Menu.NONE, 1, Menu.NONE, "Add to queue")
+            menu.add(Menu.NONE, 2, Menu.NONE, "Play next")
+            menu.add(Menu.NONE, 3, Menu.NONE, "Add to playlist")
+            menu.add(Menu.NONE, 4, Menu.NONE, "Remove")
+            menu.add(Menu.NONE, 5, Menu.NONE, "Cancel selection")
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    1 -> {
+                        selectedSongs.forEach { viewModel.addSongToQueue(it) }
+                        showToast("Added ${selectedSongs.size} songs to queue")
+                        songAdapter.exitSelectionMode()
+                        true
+                    }
+                    2 -> {
+                        selectedSongs.asReversed().forEach { viewModel.addSongToPlayNext(it) }
+                        showToast("Queued ${selectedSongs.size} songs to play next")
+                        songAdapter.exitSelectionMode()
+                        true
+                    }
+                    3 -> {
+                        showAddMultipleSongsToPlaylistDialog(selectedSongs)
+                        songAdapter.exitSelectionMode()
+                        true
+                    }
+                    4 -> {
+                        val removed = viewModel.removeSongsFromPlaylist(
+                            playlistId,
+                            selectedSongs.map { it.path }.toSet()
+                        )
+                        if (removed > 0) showToast("Removed $removed songs")
+                        else showToast("No songs removed")
+                        songAdapter.exitSelectionMode()
+                        true
+                    }
+                    5 -> {
+                        songAdapter.exitSelectionMode()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
+    }
+
+    private fun updatePlaylistSelectionUi(isSelectionMode: Boolean, selectedCount: Int) {
+        if (!isSelectionMode) {
+            updateSortButtonLabel()
+            return
+        }
+        btnSortList.text = if (selectedCount > 0) {
+            "Actions ($selectedCount)"
+        } else {
+            "Actions"
+        }
     }
 
     private fun applySongFilter(query: String) {
@@ -406,6 +510,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
     private fun canDragCustomOrder(): Boolean {
         if (currentSongSort != PlaylistSongSortOption.CUSTOM) return false
+        if (songAdapter.isSelectionMode()) return false
         if (etSearchSongs.text?.isNotBlank() == true) return false
         return filteredSongs.size > 1
     }

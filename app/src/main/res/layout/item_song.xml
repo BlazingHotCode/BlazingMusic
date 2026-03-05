@@ -23,6 +23,19 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <CheckBox
+        android:id="@+id/cbSelectSong"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:background="@drawable/bg_icon_button"
+        android:buttonTint="@color/accent_lavender"
+        android:padding="3dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/ivAlbumArt"
+        app:layout_constraintEnd_toEndOf="@id/ivAlbumArt"
+        app:layout_constraintStart_toStartOf="@id/ivAlbumArt"
+        app:layout_constraintTop_toTopOf="@id/ivAlbumArt" />
+
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="0dp"

@@ -15,20 +15,21 @@
 13. [x] Build queue controls: drag to reorder, swipe to remove, and "play next."
 14. [x] Persist queue + current index across app restarts.
 15. [x] Add playlist creation and management (create, rename, delete playlists; add/remove songs).
-16. [x] Add sort options: title, artist, album, duration, recently added.
-17. [ ] Add a clear "currently playing" indicator in the main song list.
-18. [ ] Add "Up Next" section in mini-player (next 3 songs).
-19. [ ] Open a full-screen player when tapping the mini-player.
-20. [ ] Add media notification player controls via `MediaStyle` notification actions: previous, play/pause, next, seek.
-21. [ ] Add lock-screen player metadata/controls driven by `MediaSession` metadata and playback state updates.
-22. [ ] Request and handle POST_NOTIFICATIONS permission on Android 13+.
-23. [ ] Debounce search input for smoother filtering on large libraries.
-24. [ ] Add fast-scrolling and alphabetical indexing in song list.
-25. [ ] Modernize the full UI/UX and visual design so the app looks polished and production-ready.
-26. [ ] Show empty/error states (no songs, permission denied, load failure).
-27. [ ] Replace deprecated adapterPosition usage in SongAdapter.
-28. [ ] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
-29. [ ] Add analytics/logging hooks for playback errors and skips.
-30. [ ] Add settings screen for default repeat/shuffle behavior and audio focus options.
-31. [ ] Add YouTube API integration to fetch/play songs from YouTube sources.
-32. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
+16. [ ] Add multi-select support for songs/playlists bulk actions.
+17. [x] Add sort options: title, artist, album, duration, recently added.
+18. [ ] Add a clear "currently playing" indicator in the main song list.
+19. [ ] Add "Up Next" section in mini-player (next 3 songs).
+20. [ ] Open a full-screen player when tapping the mini-player.
+21. [ ] Add media notification player controls via `MediaStyle` notification actions: previous, play/pause, next, seek.
+22. [ ] Add lock-screen player metadata/controls driven by `MediaSession` metadata and playback state updates.
+23. [ ] Request and handle POST_NOTIFICATIONS permission on Android 13+.
+24. [ ] Debounce search input for smoother filtering on large libraries.
+25. [ ] Add fast-scrolling and alphabetical indexing in song list.
+26. [ ] Modernize the full UI/UX and visual design so the app looks polished and production-ready.
+27. [ ] Show empty/error states (no songs, permission denied, load failure).
+28. [ ] Replace deprecated adapterPosition usage in SongAdapter.
+29. [ ] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
+30. [ ] Add analytics/logging hooks for playback errors and skips.
+31. [ ] Add settings screen for default repeat/shuffle behavior and audio focus options.
+32. [ ] Add YouTube API integration to fetch/play songs from YouTube sources.
+33. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
