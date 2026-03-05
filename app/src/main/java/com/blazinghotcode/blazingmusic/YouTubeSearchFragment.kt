@@ -2,17 +2,19 @@ package com.blazinghotcode.blazingmusic
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
 import android.os.Build
+import android.os.Bundle
 import android.text.Layout
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
-import android.widget.Switch
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
@@ -30,17 +32,19 @@ class YouTubeSearchFragment : Fragment() {
     private lateinit var tvTitle: TextView
     private lateinit var etQuery: EditText
     private lateinit var btnSearch: ImageButton
-    private lateinit var switchSongsOnly: Switch
+    private lateinit var tvFilterLabel: TextView
+    private lateinit var btnSearchFilter: Button
     private lateinit var rvResults: RecyclerView
     private lateinit var tvState: TextView
+    private lateinit var browseHeaderContainer: View
+    private lateinit var ivBrowseHeaderArt: ImageView
+    private lateinit var tvBrowseHeaderTitle: TextView
+    private lateinit var tvBrowseHeaderSubtitle: TextView
     private lateinit var adapter: YouTubeSearchAdapter
 
     private val apiClient by lazy { YouTubeApiClient() }
     private var activeJob: Job? = null
-    private var lastQuery: String = ""
-    private var lastSongsOnly: Boolean = false
-    private var lastSearchResults: List<YouTubeVideo> = emptyList()
-    private val browseStack = mutableListOf<BrowseRequest>()
+    private var selectedFilter: YouTubeSearchFilter = YouTubeSearchFilter.ALL
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -65,15 +69,7 @@ class YouTubeSearchFragment : Fragment() {
     }
 
     fun handleBackNavigation(): Boolean {
-        if (browseStack.isEmpty()) return false
-        browseStack.removeLastOrNull()
-        if (browseStack.isEmpty()) {
-            adapter.submitList(lastSearchResults)
-            showState("Back to search results for \"$lastQuery\".")
-        } else {
-            loadBrowse(browseStack.last())
-        }
-        return true
+        return false
     }
 
     private fun bindViews(view: View) {
@@ -81,10 +77,17 @@ class YouTubeSearchFragment : Fragment() {
         tvTitle = view.findViewById(R.id.tvTitle)
         etQuery = view.findViewById(R.id.etYouTubeSearch)
         btnSearch = view.findViewById(R.id.btnRunYouTubeSearch)
-        switchSongsOnly = view.findViewById(R.id.switchSongsOnly)
+        tvFilterLabel = view.findViewById(R.id.tvSongsOnlyLabel)
+        btnSearchFilter = view.findViewById(R.id.btnSearchFilter)
         rvResults = view.findViewById(R.id.rvYouTubeResults)
         tvState = view.findViewById(R.id.tvYouTubeState)
+        browseHeaderContainer = view.findViewById(R.id.browseHeaderContainer)
+        ivBrowseHeaderArt = view.findViewById(R.id.ivBrowseHeaderArt)
+        tvBrowseHeaderTitle = view.findViewById(R.id.tvBrowseHeaderTitle)
+        tvBrowseHeaderSubtitle = view.findViewById(R.id.tvBrowseHeaderSubtitle)
         applyHeaderTitleSizing(tvTitle)
+        updateFilterButtonText()
+        updateBrowseUiState()
     }
 
     private fun applyHeaderTitleSizing(titleView: TextView) {
@@ -125,15 +128,7 @@ class YouTubeSearchFragment : Fragment() {
             }
         }
         btnSearch.setOnClickListener { runSearch() }
-        switchSongsOnly.setOnCheckedChangeListener { _, _ ->
-            if (browseStack.isNotEmpty()) return@setOnCheckedChangeListener
-            val mode = if (switchSongsOnly.isChecked) {
-                "Songs-only filter enabled."
-            } else {
-                "Showing broader music results."
-            }
-            showState(mode)
-        }
+        btnSearchFilter.setOnClickListener { showFilterMenu() }
         etQuery.setOnEditorActionListener { _, _, _ ->
             runSearch()
             true
@@ -147,25 +142,41 @@ class YouTubeSearchFragment : Fragment() {
             return
         }
 
-        browseStack.clear()
-        lastQuery = query
-        lastSongsOnly = switchSongsOnly.isChecked
+        updateBrowseUiState()
         activeJob?.cancel()
         activeJob = viewLifecycleOwner.lifecycleScope.launch {
             showState("Searching...")
             val results = runCatching {
-                apiClient.searchMusicVideos(query, songsOnly = lastSongsOnly)
+                apiClient.searchMusicVideos(query, filter = selectedFilter)
             }.getOrElse {
                 emptyList()
             }
-            lastSearchResults = results
             adapter.submitList(results)
             if (results.isEmpty()) {
                 showState("No results found.")
             } else {
-                showState("Tap songs/videos to play in app, or open artists/albums/playlists.")
+                showState("Showing ${selectedFilter.displayName.lowercase()} results.")
             }
         }
+    }
+
+    private fun showFilterMenu() {
+        val popup = PopupMenu(requireContext(), btnSearchFilter)
+        YouTubeSearchFilter.entries.forEachIndexed { index, filter ->
+            popup.menu.add(0, index, index, filter.displayName)
+        }
+        popup.setOnMenuItemClickListener { item ->
+            val chosen = YouTubeSearchFilter.entries.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
+            selectedFilter = chosen
+            updateFilterButtonText()
+            showState("Filter: ${selectedFilter.displayName}")
+            true
+        }
+        popup.show()
+    }
+
+    private fun updateFilterButtonText() {
+        btnSearchFilter.text = selectedFilter.displayName
     }
 
     private fun onItemClicked(item: YouTubeVideo) {
@@ -177,32 +188,15 @@ class YouTubeSearchFragment : Fragment() {
     }
 
     private fun openBrowse(item: YouTubeVideo) {
-        val browseId = item.browseId ?: return
-        val request = BrowseRequest(
-            browseId = browseId,
-            params = item.browseParams,
-            title = item.title
-        )
-        browseStack.add(request)
-        loadBrowse(request)
+        (activity as? MainActivity)?.openYouTubeBrowse(item)
     }
 
-    private fun loadBrowse(request: BrowseRequest) {
-        activeJob?.cancel()
-        activeJob = viewLifecycleOwner.lifecycleScope.launch {
-            showState("Loading ${request.title}...")
-            val results = runCatching {
-                apiClient.browseCollection(request.browseId, request.params)
-            }.getOrElse {
-                emptyList()
-            }
-            adapter.submitList(results)
-            if (results.isEmpty()) {
-                showState("No items found in ${request.title}.")
-            } else {
-                showState("${request.title}: tap songs/videos to play, tap collections to drill down.")
-            }
-        }
+    private fun updateBrowseUiState() {
+        etQuery.visibility = View.VISIBLE
+        btnSearch.visibility = View.VISIBLE
+        tvFilterLabel.visibility = View.VISIBLE
+        btnSearchFilter.visibility = View.VISIBLE
+        browseHeaderContainer.visibility = View.GONE
     }
 
     private fun playInApp(item: YouTubeVideo) {
@@ -278,9 +272,4 @@ class YouTubeSearchFragment : Fragment() {
         return (value * density).toInt()
     }
 
-    private data class BrowseRequest(
-        val browseId: String,
-        val params: String?,
-        val title: String
-    )
 }

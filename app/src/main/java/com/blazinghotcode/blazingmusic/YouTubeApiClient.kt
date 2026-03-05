@@ -18,7 +18,7 @@ class YouTubeApiClient {
     suspend fun searchMusicVideos(
         query: String,
         maxResults: Int = 20,
-        songsOnly: Boolean = true
+        filter: YouTubeSearchFilter = YouTubeSearchFilter.ALL
     ): List<YouTubeVideo> {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
@@ -27,7 +27,7 @@ class YouTubeApiClient {
             .put("context", contextObject())
             .put("query", trimmed)
             .apply {
-                if (songsOnly) put("params", FILTER_SONG)
+                filter.params?.let { put("params", it) }
             }
 
         return post("search", body)
@@ -316,6 +316,7 @@ class YouTubeApiClient {
             title = decodeHtmlEntities(title),
             channelTitle = decodeHtmlEntities(subtitle),
             thumbnailUrl = thumb,
+            sectionTitle = shelfTitle?.let(::decodeHtmlEntities),
             type = type,
             videoId = videoId,
             browseId = browseId,
@@ -501,7 +502,6 @@ class YouTubeApiClient {
         private const val ANDROID_CLIENT_ID = "3"
         private const val ANDROID_CLIENT_NAME = "ANDROID"
         private const val ANDROID_CLIENT_VERSION = "21.03.38"
-        private const val FILTER_SONG = "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D"
         private const val USER_AGENT_WEB =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
         private const val USER_AGENT_ANDROID =

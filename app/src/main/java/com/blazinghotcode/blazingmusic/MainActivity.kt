@@ -1688,7 +1688,18 @@ class MainActivity : AppCompatActivity() {
 
     fun openSearchTab() {
         val previousTab = currentBottomTab
-        if (previousTab == BottomTab.SEARCH && youtubeContainer.visibility == View.VISIBLE) return
+        if (previousTab == BottomTab.SEARCH && youtubeContainer.visibility == View.VISIBLE) {
+            if (supportFragmentManager.backStackEntryCount > 0) {
+                supportFragmentManager.popBackStackImmediate(
+                    null,
+                    androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE
+                )
+                supportFragmentManager.beginTransaction()
+                    .replace(R.id.youtubeContainer, YouTubeSearchFragment())
+                    .commit()
+            }
+            return
+        }
         if (playlistContainer.visibility == View.VISIBLE) {
             supportFragmentManager.popBackStackImmediate(
                 null,
@@ -1708,6 +1719,33 @@ class MainActivity : AppCompatActivity() {
         updateBottomNavSelection(BottomTab.SEARCH)
         refreshSongAlphabetIndexVisibility()
         updateHomeLibraryStateUi()
+    }
+
+    fun openYouTubeBrowse(item: YouTubeVideo) {
+        val browseId = item.browseId ?: return
+        youtubeContainer.visibility = View.VISIBLE
+        supportFragmentManager.beginTransaction()
+            .setCustomAnimations(
+                R.anim.slide_in_right,
+                R.anim.slide_out_left,
+                R.anim.slide_in_left,
+                R.anim.slide_out_right
+            )
+            .replace(
+                R.id.youtubeContainer,
+                YouTubeBrowseFragment.newInstance(
+                    browseId = browseId,
+                    browseParams = item.browseParams,
+                    title = item.title,
+                    subtitle = item.channelTitle,
+                    thumbUrl = item.thumbnailUrl,
+                    type = item.type
+                )
+            )
+            .addToBackStack("youtube_browse")
+            .commit()
+        currentBottomTab = BottomTab.SEARCH
+        updateBottomNavSelection(BottomTab.SEARCH)
     }
 
     private fun isForwardTabMove(from: BottomTab, to: BottomTab): Boolean {
@@ -1771,6 +1809,12 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         if (youtubeContainer.visibility == View.VISIBLE) {
+            if (supportFragmentManager.backStackEntryCount > 0) {
+                supportFragmentManager.popBackStack()
+                currentBottomTab = BottomTab.SEARCH
+                updateBottomNavSelection(BottomTab.SEARCH)
+                return true
+            }
             val fragment = supportFragmentManager.findFragmentById(R.id.youtubeContainer) as? YouTubeSearchFragment
             if (fragment?.handleBackNavigation() == true) {
                 return true

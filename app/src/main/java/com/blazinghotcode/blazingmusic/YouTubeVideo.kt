@@ -14,6 +14,7 @@ data class YouTubeVideo(
     val title: String,
     val channelTitle: String,
     val thumbnailUrl: String?,
+    val sectionTitle: String? = null,
     val type: YouTubeItemType = YouTubeItemType.UNKNOWN,
     val videoId: String? = null,
     val browseId: String? = null,
