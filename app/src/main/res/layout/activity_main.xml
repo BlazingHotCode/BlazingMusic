@@ -15,7 +15,12 @@
         android:layout_marginStart="20dp"
         android:layout_marginEnd="12dp"
         android:layout_marginTop="18dp"
+        android:autoSizeTextType="uniform"
+        android:autoSizeMinTextSize="22sp"
+        android:autoSizeMaxTextSize="32sp"
+        android:autoSizeStepGranularity="1sp"
         android:fontFamily="@font/bbh_bartle"
+        android:includeFontPadding="false"
         android:lineSpacingExtra="-2sp"
         android:maxLines="2"
         android:text="BLAZING&#10;MUSIC"
@@ -23,23 +28,9 @@
         android:textSize="32sp"
         android:textStyle="bold"
         app:layout_constrainedWidth="true"
-        app:layout_constraintEnd_toStartOf="@id/btnYouTube"
+        app:layout_constraintEnd_toStartOf="@id/btnSettings"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
-
-    <ImageButton
-        android:id="@+id/btnYouTube"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_marginTop="20dp"
-        android:layout_marginEnd="8dp"
-        android:background="@drawable/bg_icon_button"
-        android:contentDescription="YouTube sources"
-        android:padding="8dp"
-        android:src="@drawable/ml_play"
-        app:layout_constraintEnd_toStartOf="@id/btnSettings"
-        app:layout_constraintTop_toTopOf="parent"
-        app:tint="@color/text_primary" />
 
     <ImageButton
         android:id="@+id/btnSettings"
@@ -211,6 +202,16 @@
 
     <FrameLayout
         android:id="@+id/playlistContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/bottomNav"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <FrameLayout
+        android:id="@+id/youtubeContainer"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:visibility="gone"
@@ -440,6 +441,31 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/navSearch"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/ivNavSearch"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ml_search"
+                app:tint="@color/text_secondary" />
+
+            <TextView
+                android:id="@+id/tvNavSearch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Search"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/navPlaylists"
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -459,7 +485,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:text="Playlists"
+                android:text="Library"
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp" />
         </LinearLayout>

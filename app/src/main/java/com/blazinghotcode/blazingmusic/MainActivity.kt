@@ -61,7 +61,10 @@ import com.google.common.util.concurrent.MoreExecutors
  * queue bottom sheet, permission flow, and service/controller wiring.
  */
 class MainActivity : AppCompatActivity() {
+    private enum class BottomTab { HOME, SEARCH, PLAYLISTS }
+
     companion object {
+        const val ACTION_PLAY_PENDING_QUEUE = "com.blazinghotcode.blazingmusic.action.PLAY_PENDING_QUEUE"
         private const val SORT_PREFS_NAME = "blazing_music_sort_prefs"
         private const val KEY_HOME_SORT = "home_sort"
         private const val SEARCH_DEBOUNCE_MS = 220L
@@ -86,13 +89,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRepeat: ImageButton
     private lateinit var bottomNav: View
     private lateinit var navHome: View
+    private lateinit var navSearch: View
     private lateinit var navPlaylists: View
     private lateinit var seekBar: SeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvTotalTime: TextView
     private lateinit var etSearch: EditText
     private lateinit var btnSortSongs: Button
-    private lateinit var btnYouTube: ImageButton
     private lateinit var btnSettings: ImageButton
     private lateinit var homeStateContainer: View
     private lateinit var tvHomeStateTitle: TextView
@@ -109,12 +112,14 @@ class MainActivity : AppCompatActivity() {
     private var isCurrentlyPlaying = false
     private var shouldRestartQueue = false
     private lateinit var playlistContainer: View
+    private lateinit var youtubeContainer: View
     private var queueDialog: BottomSheetDialog? = null
     private var queueSheetBehavior: BottomSheetBehavior<FrameLayout>? = null
     private var queueEditorAdapter: QueueEditorAdapter? = null
     private var isQueueDragInProgress = false
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var currentSongSort = SongSortOption.TITLE
+    private var currentBottomTab: BottomTab = BottomTab.HOME
     private var hasAudioPermission = false
     private var hasNotificationPermission = true
     private var miniPlayerStartX = 0f
@@ -222,13 +227,13 @@ class MainActivity : AppCompatActivity() {
         btnRepeat = findViewById(R.id.btnRepeat)
         bottomNav = findViewById(R.id.bottomNav)
         navHome = findViewById(R.id.navHome)
+        navSearch = findViewById(R.id.navSearch)
         navPlaylists = findViewById(R.id.navPlaylists)
         seekBar = findViewById(R.id.seekBar)
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvTotalTime = findViewById(R.id.tvTotalTime)
         etSearch = findViewById(R.id.etSearch)
         btnSortSongs = findViewById(R.id.btnSortSongs)
-        btnYouTube = findViewById(R.id.btnYouTube)
         btnSettings = findViewById(R.id.btnSettings)
         homeStateContainer = findViewById(R.id.homeStateContainer)
         tvHomeStateTitle = findViewById(R.id.tvHomeStateTitle)
@@ -239,11 +244,9 @@ class MainActivity : AppCompatActivity() {
         songScrollTrack = findViewById(R.id.songScrollTrack)
         songScrollThumb = findViewById(R.id.songScrollThumb)
         playlistContainer = findViewById(R.id.playlistContainer)
+        youtubeContainer = findViewById(R.id.youtubeContainer)
         currentSongSort = loadHomeSort()
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
-        btnYouTube.setOnClickListener {
-            startActivity(Intent(this, YouTubeSearchActivity::class.java))
-        }
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
@@ -373,6 +376,18 @@ class MainActivity : AppCompatActivity() {
     private fun handlePlaybackActionIntent(intent: Intent?) {
         val action = intent?.action ?: return
         when (action) {
+            ACTION_PLAY_PENDING_QUEUE -> {
+                val pending = PendingPlaybackStore.consume()
+                if (pending != null) {
+                    val queue = pending.first
+                    val startIndex = pending.second.coerceIn(0, queue.lastIndex)
+                    val song = queue[startIndex]
+                    viewModel.playSongFromQueue(song, queue)
+                } else {
+                    showToast("No pending playback item")
+                }
+                intent.action = null
+            }
             PlaybackNotificationManager.ACTION_PREVIOUS,
             PlaybackNotificationManager.ACTION_PLAY_PAUSE,
             PlaybackNotificationManager.ACTION_NEXT,
@@ -382,6 +397,12 @@ class MainActivity : AppCompatActivity() {
                 intent.action = null
             }
         }
+    }
+
+    fun playTemporaryQueue(queue: List<Song>, startIndex: Int) {
+        if (queue.isEmpty()) return
+        val resolvedIndex = startIndex.coerceIn(0, queue.lastIndex)
+        viewModel.playSongFromQueue(queue[resolvedIndex], queue)
     }
 
     private fun setupMiniPlayerExpandGesture(onOpen: () -> Unit) {
@@ -474,6 +495,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupPlaylistControls() {
         navHome.setOnClickListener { openHomeTab() }
+        navSearch.setOnClickListener { openSearchTab() }
         navPlaylists.setOnClickListener { openPlaylistsTab() }
         btnSortSongs.setOnClickListener {
             if (songAdapter.isSelectionMode()) {
@@ -915,7 +937,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPlaylistActionsDialog(playlist: Playlist) {
-        val actions = arrayOf("View songs", "Add songs", "Rename", "Delete")
+        val actions = if (playlist.isLocalMusicSystemPlaylist()) {
+            arrayOf("View songs")
+        } else {
+            arrayOf("View songs", "Add songs", "Rename", "Delete")
+        }
         showSimpleBottomSheet(
             title = playlist.name,
             items = actions.toList(),
@@ -924,9 +950,9 @@ class MainActivity : AppCompatActivity() {
         ) { index ->
             when (index) {
                 0 -> showPlaylistSongsDialog(playlist.id)
-                1 -> showAddSongsToPlaylistDialog(playlist.id)
-                2 -> showRenamePlaylistDialog(playlist)
-                3 -> showDeletePlaylistDialog(playlist)
+                1 -> if (!playlist.isLocalMusicSystemPlaylist()) showAddSongsToPlaylistDialog(playlist.id)
+                2 -> if (!playlist.isLocalMusicSystemPlaylist()) showRenamePlaylistDialog(playlist)
+                3 -> if (!playlist.isLocalMusicSystemPlaylist()) showDeletePlaylistDialog(playlist)
             }
         }
     }
@@ -1011,6 +1037,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRenamePlaylistDialog(playlist: Playlist) {
+        if (playlist.isLocalMusicSystemPlaylist()) {
+            showToast("Local music playlist cannot be renamed")
+            return
+        }
         showTextInputBottomSheet(
             title = "Rename playlist",
             hint = "Playlist name",
@@ -1027,6 +1057,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showDeletePlaylistDialog(playlist: Playlist) {
+        if (playlist.isLocalMusicSystemPlaylist()) {
+            showToast("Local music playlist cannot be deleted")
+            return
+        }
         showConfirmBottomSheet(
             title = "Delete playlist",
             message = "Delete \"${playlist.name}\"?",
@@ -1309,7 +1343,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshSongAlphabetIndexVisibility() {
-        val isOnHomeTab = playlistContainer.visibility != View.VISIBLE
+        val isOnHomeTab = currentBottomTab == BottomTab.HOME
         val hasSongs = songAdapter.currentList.isNotEmpty()
         val shouldShow = isOnHomeTab && hasSongs && supportsAlphabetIndexForCurrentSort()
         songAlphabetIndex.visibility = if (shouldShow) View.VISIBLE else View.GONE
@@ -1322,12 +1356,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateHomeLibraryStateUi() {
-        val isOnHomeTab = playlistContainer.visibility != View.VISIBLE
+        val isOnHomeTab = currentBottomTab == BottomTab.HOME
         if (!isOnHomeTab) {
             homeStateContainer.visibility = View.GONE
-            rvSongs.visibility = View.VISIBLE
-            etSearch.visibility = View.VISIBLE
-            btnSortSongs.visibility = View.VISIBLE
+            rvSongs.visibility = View.GONE
+            etSearch.visibility = View.GONE
+            btnSortSongs.visibility = View.GONE
+            songAlphabetIndex.visibility = View.GONE
+            songScrollTrack.visibility = View.GONE
+            songScrollThumb.visibility = View.GONE
             return
         }
 
@@ -1572,21 +1609,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun openPlaylistsTab() {
+        val previousTab = currentBottomTab
         val current = supportFragmentManager.findFragmentById(R.id.playlistContainer)
-        if (playlistContainer.visibility == View.VISIBLE && current is PlaylistsFragment) return
+        if (previousTab == BottomTab.PLAYLISTS && playlistContainer.visibility == View.VISIBLE && current is PlaylistsFragment) return
 
         if (playlistContainer.visibility != View.VISIBLE) {
-            playlistContainer.translationX = playlistContainer.width.toFloat().takeIf { it > 0f } ?: 1200f
             playlistContainer.visibility = View.VISIBLE
             supportFragmentManager.beginTransaction()
                 .replace(R.id.playlistContainer, PlaylistsFragment())
                 .commit()
-            playlistContainer.post {
-                playlistContainer.animate()
-                    .translationX(0f)
-                    .setDuration(220L)
-                    .start()
-            }
+            animateContainerIn(playlistContainer, fromRight = isForwardTabMove(previousTab, BottomTab.PLAYLISTS))
         } else if (supportFragmentManager.backStackEntryCount > 0) {
             // If user is on playlist detail, go back to playlist root with back stack animation.
             supportFragmentManager.popBackStack()
@@ -1595,12 +1627,19 @@ class MainActivity : AppCompatActivity() {
                 .replace(R.id.playlistContainer, PlaylistsFragment())
                 .commit()
         }
-        updateBottomNavSelection(homeSelected = false)
+        if (youtubeContainer.visibility == View.VISIBLE) {
+            animateContainerOut(youtubeContainer, toRight = !isForwardTabMove(previousTab, BottomTab.PLAYLISTS))
+        }
+        currentBottomTab = BottomTab.PLAYLISTS
+        updateBottomNavSelection(BottomTab.PLAYLISTS)
         refreshSongAlphabetIndexVisibility()
         updateHomeLibraryStateUi()
     }
 
     fun openPlaylistSongs(playlistId: Long, playlistName: String) {
+        if (youtubeContainer.visibility == View.VISIBLE) {
+            youtubeContainer.visibility = View.GONE
+        }
         playlistContainer.visibility = View.VISIBLE
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(
@@ -1612,32 +1651,105 @@ class MainActivity : AppCompatActivity() {
             .replace(R.id.playlistContainer, PlaylistSongsFragment.newInstance(playlistId, playlistName))
             .addToBackStack("playlist_songs")
             .commit()
-        updateBottomNavSelection(homeSelected = false)
+        currentBottomTab = BottomTab.PLAYLISTS
+        updateBottomNavSelection(BottomTab.PLAYLISTS)
     }
 
     fun openHomeTab() {
-        if (playlistContainer.visibility != View.VISIBLE) {
-            updateBottomNavSelection(homeSelected = true)
+        val previousTab = currentBottomTab
+        if (playlistContainer.visibility != View.VISIBLE && youtubeContainer.visibility != View.VISIBLE) {
+            currentBottomTab = BottomTab.HOME
+            updateBottomNavSelection(BottomTab.HOME)
             refreshSongAlphabetIndexVisibility()
             updateHomeLibraryStateUi()
             return
+        }
+        if (youtubeContainer.visibility == View.VISIBLE) {
+            animateContainerOut(youtubeContainer, toRight = !isForwardTabMove(previousTab, BottomTab.HOME))
         }
         supportFragmentManager.popBackStackImmediate(
             null,
             androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE
         )
-        val targetX = playlistContainer.width.toFloat().takeIf { it > 0f } ?: 1200f
-        playlistContainer.animate()
-            .translationX(targetX)
-            .setDuration(220L)
-            .withEndAction {
-                playlistContainer.visibility = View.GONE
-                playlistContainer.translationX = 0f
+        if (playlistContainer.visibility == View.VISIBLE) {
+            animateContainerOut(playlistContainer, toRight = !isForwardTabMove(previousTab, BottomTab.HOME)) {
                 refreshSongAlphabetIndexVisibility()
                 updateHomeLibraryStateUi()
             }
+        } else {
+            refreshSongAlphabetIndexVisibility()
+            updateHomeLibraryStateUi()
+        }
+        currentBottomTab = BottomTab.HOME
+        updateBottomNavSelection(BottomTab.HOME)
+    }
+
+    fun openSearchTab() {
+        val previousTab = currentBottomTab
+        if (previousTab == BottomTab.SEARCH && youtubeContainer.visibility == View.VISIBLE) return
+        if (playlistContainer.visibility == View.VISIBLE) {
+            supportFragmentManager.popBackStackImmediate(
+                null,
+                androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE
+            )
+            animateContainerOut(playlistContainer, toRight = !isForwardTabMove(previousTab, BottomTab.SEARCH))
+        }
+        youtubeContainer.visibility = View.VISIBLE
+        val current = supportFragmentManager.findFragmentById(R.id.youtubeContainer)
+        if (current !is YouTubeSearchFragment) {
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.youtubeContainer, YouTubeSearchFragment())
+                .commit()
+        }
+        animateContainerIn(youtubeContainer, fromRight = isForwardTabMove(previousTab, BottomTab.SEARCH))
+        currentBottomTab = BottomTab.SEARCH
+        updateBottomNavSelection(BottomTab.SEARCH)
+        refreshSongAlphabetIndexVisibility()
+        updateHomeLibraryStateUi()
+    }
+
+    private fun isForwardTabMove(from: BottomTab, to: BottomTab): Boolean {
+        return tabIndex(to) > tabIndex(from)
+    }
+
+    private fun tabIndex(tab: BottomTab): Int {
+        return when (tab) {
+            BottomTab.HOME -> 0
+            BottomTab.SEARCH -> 1
+            BottomTab.PLAYLISTS -> 2
+        }
+    }
+
+    private fun animateContainerIn(container: View, fromRight: Boolean) {
+        container.animate().cancel()
+        container.visibility = View.VISIBLE
+        container.post {
+            val distance = container.width.toFloat().takeIf { it > 0f } ?: 1200f
+            container.translationX = if (fromRight) distance else -distance
+            container.alpha = 1f
+            container.animate()
+                .translationX(0f)
+                .setDuration(220L)
+                .start()
+        }
+    }
+
+    private fun animateContainerOut(container: View, toRight: Boolean, onEnd: (() -> Unit)? = null) {
+        container.animate().cancel()
+        if (container.visibility != View.VISIBLE) {
+            onEnd?.invoke()
+            return
+        }
+        val distance = container.width.toFloat().takeIf { it > 0f } ?: 1200f
+        container.animate()
+            .translationX(if (toRight) distance else -distance)
+            .setDuration(220L)
+            .withEndAction {
+                container.visibility = View.GONE
+                container.translationX = 0f
+                onEnd?.invoke()
+            }
             .start()
-        updateBottomNavSelection(homeSelected = true)
     }
 
     private fun setupBackNavigation() {
@@ -1656,10 +1768,19 @@ class MainActivity : AppCompatActivity() {
             songAdapter.exitSelectionMode()
             return true
         }
+        if (youtubeContainer.visibility == View.VISIBLE) {
+            val fragment = supportFragmentManager.findFragmentById(R.id.youtubeContainer) as? YouTubeSearchFragment
+            if (fragment?.handleBackNavigation() == true) {
+                return true
+            }
+            openHomeTab()
+            return true
+        }
         if (playlistContainer.visibility == View.VISIBLE) {
             if (supportFragmentManager.backStackEntryCount > 0) {
                 supportFragmentManager.popBackStack()
-                updateBottomNavSelection(homeSelected = false)
+                currentBottomTab = BottomTab.PLAYLISTS
+                updateBottomNavSelection(BottomTab.PLAYLISTS)
             } else {
                 openHomeTab()
             }
@@ -1668,27 +1789,28 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
-    private fun updateBottomNavSelection(homeSelected: Boolean) {
+    private fun updateBottomNavSelection(selectedTab: BottomTab) {
         val homeIcon = findViewById<ImageView>(R.id.ivNavHome)
         val homeText = findViewById<TextView>(R.id.tvNavHome)
+        val searchIcon = findViewById<ImageView>(R.id.ivNavSearch)
+        val searchText = findViewById<TextView>(R.id.tvNavSearch)
         val playlistIcon = findViewById<ImageView>(R.id.ivNavPlaylists)
         val playlistText = findViewById<TextView>(R.id.tvNavPlaylists)
 
-        if (homeSelected) {
-            homeIcon.setImageResource(R.drawable.ml_home_filled)
-            homeIcon.setColorFilter(ContextCompat.getColor(this, R.color.accent_lavender))
-            homeText.setTextColor(ContextCompat.getColor(this, R.color.accent_lavender))
-            playlistIcon.setImageResource(R.drawable.ml_library_music_outlined)
-            playlistIcon.setColorFilter(ContextCompat.getColor(this, R.color.text_secondary))
-            playlistText.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
-        } else {
-            homeIcon.setImageResource(R.drawable.ml_home_outlined)
-            homeIcon.setColorFilter(ContextCompat.getColor(this, R.color.text_secondary))
-            homeText.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
-            playlistIcon.setImageResource(R.drawable.ml_library_music_filled)
-            playlistIcon.setColorFilter(ContextCompat.getColor(this, R.color.accent_lavender))
-            playlistText.setTextColor(ContextCompat.getColor(this, R.color.accent_lavender))
-        }
+        val isHome = selectedTab == BottomTab.HOME
+        val isSearch = selectedTab == BottomTab.SEARCH
+        val isPlaylists = selectedTab == BottomTab.PLAYLISTS
+
+        homeIcon.setImageResource(if (isHome) R.drawable.ml_home_filled else R.drawable.ml_home_outlined)
+        homeIcon.setColorFilter(ContextCompat.getColor(this, if (isHome) R.color.accent_lavender else R.color.text_secondary))
+        homeText.setTextColor(ContextCompat.getColor(this, if (isHome) R.color.accent_lavender else R.color.text_secondary))
+
+        searchIcon.setColorFilter(ContextCompat.getColor(this, if (isSearch) R.color.accent_lavender else R.color.text_secondary))
+        searchText.setTextColor(ContextCompat.getColor(this, if (isSearch) R.color.accent_lavender else R.color.text_secondary))
+
+        playlistIcon.setImageResource(if (isPlaylists) R.drawable.ml_library_music_filled else R.drawable.ml_library_music_outlined)
+        playlistIcon.setColorFilter(ContextCompat.getColor(this, if (isPlaylists) R.color.accent_lavender else R.color.text_secondary))
+        playlistText.setTextColor(ContextCompat.getColor(this, if (isPlaylists) R.color.accent_lavender else R.color.text_secondary))
     }
 
     private fun applySystemInsets() {
