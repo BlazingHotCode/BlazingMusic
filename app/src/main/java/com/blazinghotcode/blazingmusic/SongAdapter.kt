@@ -103,17 +103,20 @@ class SongAdapter(
             binding.tvArtist.text = song.artist
             binding.tvDuration.text = formatDuration(song.duration)
             val inSelectionMode = isSelectionModeEnabled
-            binding.cbSelectSong.visibility = if (inSelectionMode) View.VISIBLE else View.GONE
-            binding.ivAlbumArt.visibility = if (inSelectionMode) View.INVISIBLE else View.VISIBLE
+            animateSelectionModeViews(inSelectionMode)
 
             if (inSelectionMode) {
-                binding.cbSelectSong.setOnCheckedChangeListener(null)
-                binding.cbSelectSong.isChecked = song.path in selectedSongPaths
-                binding.cbSelectSong.setOnCheckedChangeListener { _, isChecked ->
-                    val currentlySelected = song.path in selectedSongPaths
-                    if (isChecked != currentlySelected) {
-                        toggleSelection(song)
-                    }
+                val shouldBeChecked = song.path in selectedSongPaths
+                val wasChecked = binding.cbSelectSong.isSelected
+                binding.cbSelectSong.isSelected = shouldBeChecked
+                if (shouldBeChecked && !wasChecked) {
+                    binding.cbSelectSong.scaleX = 0.86f
+                    binding.cbSelectSong.scaleY = 0.86f
+                    binding.cbSelectSong.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(140L)
+                        .start()
                 }
             } else {
                 song.albumArtUri?.let { uri ->
@@ -123,6 +126,56 @@ class SongAdapter(
                     }
                 } ?: run {
                     binding.ivAlbumArt.setImageResource(R.drawable.ml_library_music)
+                }
+            }
+        }
+
+        private fun animateSelectionModeViews(inSelectionMode: Boolean) {
+            if (inSelectionMode) {
+                if (binding.ivAlbumArt.visibility == View.VISIBLE) {
+                    binding.ivAlbumArt.animate()
+                        .alpha(0f)
+                        .setDuration(120L)
+                        .withEndAction {
+                            binding.ivAlbumArt.visibility = View.INVISIBLE
+                            binding.ivAlbumArt.alpha = 1f
+                        }
+                        .start()
+                }
+                if (binding.cbSelectSong.visibility != View.VISIBLE) {
+                    binding.cbSelectSong.alpha = 0f
+                    binding.cbSelectSong.scaleX = 0.86f
+                    binding.cbSelectSong.scaleY = 0.86f
+                    binding.cbSelectSong.visibility = View.VISIBLE
+                    binding.cbSelectSong.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(140L)
+                        .start()
+                }
+            } else {
+                if (binding.cbSelectSong.visibility == View.VISIBLE) {
+                    binding.cbSelectSong.animate()
+                        .alpha(0f)
+                        .scaleX(0.86f)
+                        .scaleY(0.86f)
+                        .setDuration(100L)
+                        .withEndAction {
+                            binding.cbSelectSong.visibility = View.GONE
+                            binding.cbSelectSong.alpha = 1f
+                            binding.cbSelectSong.scaleX = 1f
+                            binding.cbSelectSong.scaleY = 1f
+                        }
+                        .start()
+                }
+                if (binding.ivAlbumArt.visibility != View.VISIBLE) {
+                    binding.ivAlbumArt.alpha = 0f
+                    binding.ivAlbumArt.visibility = View.VISIBLE
+                    binding.ivAlbumArt.animate()
+                        .alpha(1f)
+                        .setDuration(120L)
+                        .start()
                 }
             }
         }
