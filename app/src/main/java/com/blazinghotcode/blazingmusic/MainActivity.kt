@@ -118,6 +118,15 @@ class MainActivity : AppCompatActivity() {
         if (isGranted) {
             viewModel.loadSongs()
         }
+        requestNotificationPermissionIfNeeded()
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            showToast("Notification controls may be limited without notification permission")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1133,11 +1142,22 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.checkSelfPermission(this, permission) ==
                 PackageManager.PERMISSION_GRANTED -> {
                 viewModel.loadSongs()
+                requestNotificationPermissionIfNeeded()
             }
             else -> {
                 permissionLauncher.launch(permission)
             }
         }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     override fun onResume() {
