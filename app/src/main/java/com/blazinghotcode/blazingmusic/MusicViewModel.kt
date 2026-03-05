@@ -3,6 +3,7 @@ package com.blazinghotcode.blazingmusic
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
@@ -706,6 +707,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     .setTitle(song.title)
                     .setArtist(song.artist)
                     .setAlbumTitle(song.album)
+                    .setArtworkUri(song.albumArtUri?.let { Uri.parse(it) })
                     .build()
             )
             .build()

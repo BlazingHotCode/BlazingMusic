@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.transform.RoundedCornersTransformation
@@ -14,10 +15,17 @@ class YouTubeBrowseAdapter(
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val rows = mutableListOf<Row>()
+    private var hideItemThumbnails = false
 
     fun submit(items: List<YouTubeVideo>) {
         rows.clear()
         rows.addAll(buildRows(items))
+        notifyDataSetChanged()
+    }
+
+    fun setHideItemThumbnails(hide: Boolean) {
+        if (hideItemThumbnails == hide) return
+        hideItemThumbnails = hide
         notifyDataSetChanged()
     }
 
@@ -45,7 +53,7 @@ class YouTubeBrowseAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
             is Row.Section -> (holder as SectionViewHolder).bind(row.title)
-            is Row.Item -> (holder as ItemViewHolder).bind(row.item)
+            is Row.Item -> (holder as ItemViewHolder).bind(row.item, hideItemThumbnails)
         }
     }
 
@@ -88,11 +96,13 @@ class YouTubeBrowseAdapter(
         itemView: View,
         private val onItemClick: (YouTubeVideo) -> Unit
     ) : RecyclerView.ViewHolder(itemView) {
+        private val root: ConstraintLayout = itemView as ConstraintLayout
         private val thumb: ImageView = itemView.findViewById(R.id.ivVideoThumb)
         private val title: TextView = itemView.findViewById(R.id.tvVideoTitle)
         private val subtitle: TextView = itemView.findViewById(R.id.tvChannelTitle)
 
-        fun bind(video: YouTubeVideo) {
+        fun bind(video: YouTubeVideo, hideThumbnail: Boolean) {
+            applyThumbnailMode(hideThumbnail)
             title.text = video.title
             val typeLabel = when (video.type) {
                 YouTubeItemType.SONG -> "Song"
@@ -104,13 +114,46 @@ class YouTubeBrowseAdapter(
             }
             val sub = video.channelTitle.ifBlank { "YouTube Music" }
             subtitle.text = "$typeLabel • $sub"
-            video.thumbnailUrl?.let { url ->
-                thumb.load(url) {
-                    crossfade(true)
-                    transformations(RoundedCornersTransformation(14f))
-                }
-            } ?: thumb.setImageResource(R.drawable.ml_library_music)
+            if (!hideThumbnail) {
+                video.thumbnailUrl?.let { url ->
+                    thumb.load(url) {
+                        crossfade(true)
+                        transformations(RoundedCornersTransformation(14f))
+                    }
+                } ?: thumb.setImageResource(R.drawable.ml_library_music)
+            } else {
+                thumb.setImageDrawable(null)
+            }
             itemView.setOnClickListener { onItemClick(video) }
+        }
+
+        private fun applyThumbnailMode(hideThumbnail: Boolean) {
+            thumb.visibility = if (hideThumbnail) View.GONE else View.VISIBLE
+
+            val titleParams = title.layoutParams as ConstraintLayout.LayoutParams
+            val subtitleParams = subtitle.layoutParams as ConstraintLayout.LayoutParams
+
+            if (hideThumbnail) {
+                titleParams.startToEnd = ConstraintLayout.LayoutParams.UNSET
+                titleParams.startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                titleParams.marginStart = 0
+
+                subtitleParams.startToEnd = ConstraintLayout.LayoutParams.UNSET
+                subtitleParams.startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                subtitleParams.marginStart = 0
+            } else {
+                titleParams.startToStart = ConstraintLayout.LayoutParams.UNSET
+                titleParams.startToEnd = R.id.ivVideoThumb
+                titleParams.marginStart = 12
+
+                subtitleParams.startToStart = ConstraintLayout.LayoutParams.UNSET
+                subtitleParams.startToEnd = R.id.ivVideoThumb
+                subtitleParams.marginStart = 12
+            }
+
+            title.layoutParams = titleParams
+            subtitle.layoutParams = subtitleParams
+            root.requestLayout()
         }
     }
 

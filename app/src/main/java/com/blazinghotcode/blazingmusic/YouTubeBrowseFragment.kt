@@ -111,6 +111,7 @@ class YouTubeBrowseFragment : Fragment() {
 
     private fun setupList() {
         adapter = YouTubeBrowseAdapter { item -> onItemClicked(item) }
+        adapter.setHideItemThumbnails(browseType == YouTubeItemType.ALBUM)
         rvBrowseResults.layoutManager = LinearLayoutManager(requireContext())
         rvBrowseResults.adapter = adapter
     }
