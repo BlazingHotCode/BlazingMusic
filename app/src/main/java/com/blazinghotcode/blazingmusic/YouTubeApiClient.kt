@@ -1,5 +1,6 @@
 package com.blazinghotcode.blazingmusic
 
+import android.content.Context
 import android.util.Log
 import androidx.core.text.HtmlCompat
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +15,7 @@ import java.net.URLDecoder
  * YouTube Music InnerTube client inspired by Metrolist's WEB_REMIX flow.
  * Supports search, browse navigation (artist/album/playlist), and stream URL resolution.
  */
-class YouTubeApiClient {
+class YouTubeApiClient(private val appContext: Context? = null) {
     private val streamUrlCache =
         object : LinkedHashMap<String, String>(401, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
@@ -585,16 +586,46 @@ class YouTubeApiClient {
     }
 
     private fun getCachedStreamUrl(videoId: String): String? {
+        val now = System.currentTimeMillis()
         synchronized(streamUrlCache) {
-            return streamUrlCache[videoId]
+            val memory = streamUrlCache[videoId]
+            if (!memory.isNullOrBlank()) return memory
         }
+
+        val prefs = appContext?.getSharedPreferences(STREAM_CACHE_PREFS, Context.MODE_PRIVATE) ?: return null
+        val raw = prefs.getString("stream_$videoId", null).orEmpty()
+        if (raw.isBlank()) return null
+        val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+        val expiresAtMs = parsed.optLong("e", 0L)
+        val streamUrl = parsed.optString("u", "").trim()
+        if (expiresAtMs <= now || streamUrl.isBlank()) {
+            prefs.edit().remove("stream_$videoId").apply()
+            return null
+        }
+
+        synchronized(streamUrlCache) {
+            streamUrlCache[videoId] = streamUrl
+        }
+        return streamUrl
     }
 
     private fun cacheStreamUrl(videoId: String, streamUrl: String) {
         if (videoId.isBlank() || streamUrl.isBlank()) return
+        val expiresAtMs = System.currentTimeMillis() + STREAM_CACHE_TTL_MS
         synchronized(streamUrlCache) {
             streamUrlCache[videoId] = streamUrl
         }
+        appContext
+            ?.getSharedPreferences(STREAM_CACHE_PREFS, Context.MODE_PRIVATE)
+            ?.edit()
+            ?.putString(
+                "stream_$videoId",
+                JSONObject()
+                    .put("u", streamUrl)
+                    .put("e", expiresAtMs)
+                    .toString()
+            )
+            ?.apply()
     }
 
     private suspend fun resolveAudioStreamUrlWithClient(
@@ -1372,6 +1403,8 @@ class YouTubeApiClient {
 
     private companion object {
         private const val TAG = "YouTubeApiClient"
+        private const val STREAM_CACHE_PREFS = "yt_stream_cache"
+        private const val STREAM_CACHE_TTL_MS = 30 * 60 * 1000L
         private const val INNER_TUBE_BASE = "https://music.youtube.com/youtubei/v1"
         private const val WEB_REMIX_CLIENT_ID = "67"
         private const val WEB_REMIX_CLIENT_NAME = "WEB_REMIX"

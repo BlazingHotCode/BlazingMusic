@@ -27,8 +27,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -49,7 +47,7 @@ class YouTubeSearchFragment : Fragment() {
     private lateinit var tvBrowseHeaderSubtitle: TextView
     private lateinit var adapter: YouTubeSearchAdapter
 
-    private val apiClient by lazy { YouTubeApiClient() }
+    private val apiClient by lazy { YouTubeApiClient(requireContext().applicationContext) }
     private var activeJob: Job? = null
     private var selectedFilter: YouTubeSearchFilter = YouTubeSearchFilter.ALL
 
@@ -324,16 +322,25 @@ class YouTubeSearchFragment : Fragment() {
                 .distinctBy { it.videoId ?: it.id }
                 .toList()
 
-            val resolved = mutableListOf<Song>()
-            resolved += resolveRadioSongsFast(candidates)
+            var announced = false
+            val resolved = resolveRadioSongsFast(candidates) { snapshot ->
+                host.replaceUpcomingQueue(snapshot)
+                if (!announced && snapshot.size >= RADIO_INITIAL_READY) {
+                    showToast("Radio ready (${snapshot.size} up next)")
+                    showState("Radio updating...")
+                    announced = true
+                }
+            }
             if (resolved.isEmpty()) {
                 showToast("No radio recommendations found")
                 showState("No radio recommendations found.")
                 return@launch
             }
             host.replaceUpcomingQueue(resolved)
-            showToast("Radio ready (${resolved.size} up next)")
-            showState("Radio ready.")
+            if (!announced) {
+                showToast("Radio ready (${resolved.size} up next)")
+            }
+            showState("Radio ready (${resolved.size} up next).")
         }
     }
 
@@ -345,26 +352,61 @@ class YouTubeSearchFragment : Fragment() {
         return item.toSong(streamUrl)
     }
 
-    private suspend fun resolveRadioSongsFast(items: List<YouTubeVideo>): List<Song> = coroutineScope {
-        val semaphore = Semaphore(RADIO_RESOLVE_PARALLELISM)
-        items
+    private suspend fun resolveRadioSongsFast(
+        items: List<YouTubeVideo>,
+        onProgress: ((List<Song>) -> Unit)? = null
+    ): List<Song> = coroutineScope {
+        val chunks = items
             .take(RADIO_CANDIDATE_LIMIT)
-            .mapIndexed { index, item ->
-                async(Dispatchers.IO) {
-                    semaphore.withPermit {
-                        val videoId = item.videoId ?: return@withPermit null
+            .mapIndexed { index, item -> index to item }
+            .chunked(RADIO_RESOLVE_PARALLELISM)
+
+        val collected = mutableListOf<Pair<Int, Song>>()
+        val seen = hashSetOf<String>()
+        var publishedCount = 0
+
+        for (chunk in chunks) {
+            val resolvedBatch = chunk
+                .map { (index, item) ->
+                    async(Dispatchers.IO) {
+                        val videoId = item.videoId ?: return@async null
                         val streamUrl = withTimeoutOrNull<String?>(RADIO_RESOLVE_TIMEOUT_MS) {
                             runCatching { apiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull()
-                        } ?: return@withPermit null
+                        } ?: return@async null
                         index to item.toSong(streamUrl)
                     }
                 }
+                .awaitAll()
+                .filterNotNull()
+
+            resolvedBatch.forEach { (index, song) ->
+                val key = song.sourceVideoId?.takeIf { it.isNotBlank() } ?: song.path
+                if (seen.add(key)) {
+                    collected += index to song
+                }
             }
-            .awaitAll()
-            .filterNotNull()
+
+            val snapshot = collected
+                .sortedBy { it.first }
+                .map { it.second }
+                .take(RADIO_TARGET_SIZE)
+
+            if (snapshot.size >= RADIO_INITIAL_READY && snapshot.size > publishedCount) {
+                onProgress?.invoke(snapshot)
+                publishedCount = snapshot.size
+            }
+            if (snapshot.size >= RADIO_TARGET_SIZE) break
+        }
+
+        val final = collected
             .sortedBy { it.first }
             .map { it.second }
             .take(RADIO_TARGET_SIZE)
+
+        if (final.size > publishedCount) {
+            onProgress?.invoke(final)
+        }
+        final
     }
 
     private fun YouTubeVideo.toSong(streamUrl: String): Song {
@@ -422,6 +464,7 @@ class YouTubeSearchFragment : Fragment() {
         private const val MENU_ADD_QUEUE = 3
         private const val MENU_SONG_RADIO_UP_NEXT = 4
         private const val MENU_OPEN_ALBUM = 5
+        private const val RADIO_INITIAL_READY = 10
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60
         private const val RADIO_RESOLVE_PARALLELISM = 6

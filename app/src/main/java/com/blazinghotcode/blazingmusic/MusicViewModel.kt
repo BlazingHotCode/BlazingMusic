@@ -39,7 +39,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val repository = MusicRepository(application)
-    private val youTubeApiClient = YouTubeApiClient()
+    private val youTubeApiClient = YouTubeApiClient(getApplication<Application>().applicationContext)
     private var exoPlayer: ExoPlayer? = null
     private var listenerAttachedPlayer: ExoPlayer? = null
     private var playbackSettings: PlaybackSettings = PlaybackSettings(

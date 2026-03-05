@@ -37,7 +37,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
     private lateinit var tvBrowseHeaderSubtitle: TextView
     private lateinit var adapter: YouTubeSearchAdapter
 
-    private val apiClient by lazy { YouTubeApiClient() }
+    private val apiClient by lazy { YouTubeApiClient(applicationContext) }
     private var activeJob: Job? = null
 
     private var lastQuery: String = ""

@@ -27,8 +27,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Full-screen player dialog with gesture-based dismiss and queue handoff controls. */
@@ -39,6 +37,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         private const val MENU_SONG_RADIO_UP_NEXT = 1
         private const val MENU_SHUFFLE_UPCOMING = 2
         private const val MENU_CLEAR_UPCOMING = 3
+        private const val RADIO_INITIAL_READY = 10
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60
         private const val RADIO_RESOLVE_PARALLELISM = 6
@@ -73,7 +72,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
     private var closeVelocityTracker: VelocityTracker? = null
     private var queueVelocityTracker: VelocityTracker? = null
     private var radioJob: Job? = null
-    private val apiClient by lazy { YouTubeApiClient() }
+    private val apiClient by lazy { YouTubeApiClient(requireContext().applicationContext) }
     private var queueSnapshot: List<Song> = emptyList()
     private var queueIndexSnapshot: Int = -1
 
@@ -432,7 +431,14 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
                 return@launch
             }
 
-            val resolved = resolvePlayableRadioSongsFast(candidates)
+            var announced = false
+            val resolved = resolvePlayableRadioSongsFast(candidates) { snapshot ->
+                viewModel.replaceUpcomingQueue(snapshot)
+                if (!announced && snapshot.size >= RADIO_INITIAL_READY) {
+                    showToast("Song radio ready (${snapshot.size} up next)")
+                    announced = true
+                }
+            }
 
             if (resolved.isEmpty()) {
                 showToast("Unable to build playable radio queue")
@@ -440,7 +446,9 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
             }
 
             viewModel.replaceUpcomingQueue(resolved)
-            showToast("Song radio ready (${resolved.size} up next)")
+            if (!announced) {
+                showToast("Song radio ready (${resolved.size} up next)")
+            }
         }
     }
 
@@ -474,7 +482,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
 
     private suspend fun resolvePlayableRadioSong(item: YouTubeVideo): Song? {
         val videoId = item.videoId ?: return null
-        val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return null
+        val streamUrl = runCatching { apiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull() ?: return null
         return Song(
             id = (item.id.hashCode().toLong() and 0x7fffffffL) + 10_000_000_000L,
             title = item.title,
@@ -492,25 +500,60 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         )
     }
 
-    private suspend fun resolvePlayableRadioSongsFast(items: List<YouTubeVideo>): List<Song> = coroutineScope {
-        val semaphore = Semaphore(RADIO_RESOLVE_PARALLELISM)
-        items
+    private suspend fun resolvePlayableRadioSongsFast(
+        items: List<YouTubeVideo>,
+        onProgress: ((List<Song>) -> Unit)? = null
+    ): List<Song> = coroutineScope {
+        val chunks = items
             .take(RADIO_CANDIDATE_LIMIT)
-            .mapIndexed { index, item ->
-                async(Dispatchers.IO) {
-                    semaphore.withPermit {
+            .mapIndexed { index, item -> index to item }
+            .chunked(RADIO_RESOLVE_PARALLELISM)
+
+        val collected = mutableListOf<Pair<Int, Song>>()
+        val seen = hashSetOf<String>()
+        var publishedCount = 0
+
+        for (chunk in chunks) {
+            val resolvedBatch = chunk
+                .map { (index, item) ->
+                    async(Dispatchers.IO) {
                         val song = withTimeoutOrNull<Song?>(RADIO_RESOLVE_TIMEOUT_MS) {
                             resolvePlayableRadioSong(item)
-                        } ?: return@withPermit null
+                        } ?: return@async null
                         index to song
                     }
                 }
+                .awaitAll()
+                .filterNotNull()
+
+            resolvedBatch.forEach { (index, song) ->
+                val key = song.sourceVideoId?.takeIf { it.isNotBlank() } ?: song.path
+                if (seen.add(key)) {
+                    collected += index to song
+                }
             }
-            .awaitAll()
-            .filterNotNull()
+
+            val snapshot = collected
+                .sortedBy { it.first }
+                .map { it.second }
+                .take(RADIO_TARGET_SIZE)
+
+            if (snapshot.size >= RADIO_INITIAL_READY && snapshot.size > publishedCount) {
+                onProgress?.invoke(snapshot)
+                publishedCount = snapshot.size
+            }
+            if (snapshot.size >= RADIO_TARGET_SIZE) break
+        }
+
+        val final = collected
             .sortedBy { it.first }
             .map { it.second }
             .take(RADIO_TARGET_SIZE)
+
+        if (final.size > publishedCount) {
+            onProgress?.invoke(final)
+        }
+        final
     }
 
     private fun showToast(message: String) {
