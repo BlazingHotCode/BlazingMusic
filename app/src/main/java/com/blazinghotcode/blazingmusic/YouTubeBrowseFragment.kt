@@ -23,6 +23,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.random.Random
 
 /**
@@ -364,7 +365,9 @@ class YouTubeBrowseFragment : Fragment() {
                 async(Dispatchers.IO) {
                     semaphore.withPermit {
                         val videoId = item.videoId ?: return@withPermit null
-                        val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return@withPermit null
+                        val streamUrl = withTimeoutOrNull<String?>(RADIO_RESOLVE_TIMEOUT_MS) {
+                            runCatching { apiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull()
+                        } ?: return@withPermit null
                         index to item.toSong(streamUrl)
                     }
                 }
@@ -665,6 +668,7 @@ class YouTubeBrowseFragment : Fragment() {
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60
         private const val RADIO_RESOLVE_PARALLELISM = 6
+        private const val RADIO_RESOLVE_TIMEOUT_MS = 6000L
         private const val ARTIST_PAGE_PREFS = "blazing_music_artist_page_prefs"
         private const val KEY_SHOW_ARTIST_DESCRIPTION = "show_artist_description"
         private const val KEY_SHOW_ARTIST_SUBSCRIBERS = "show_artist_subscriber_count"

@@ -15,6 +15,13 @@ import java.net.URLDecoder
  * Supports search, browse navigation (artist/album/playlist), and stream URL resolution.
  */
 class YouTubeApiClient {
+    private val streamUrlCache =
+        object : LinkedHashMap<String, String>(401, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
+                return size > 400
+            }
+        }
+
     suspend fun searchMusicVideos(
         query: String,
         maxResults: Int = 20,
@@ -230,7 +237,9 @@ class YouTubeApiClient {
             .values
             .sortedWith(
                 compareByDescending<Pair<YouTubeVideo, Int>> { it.second }
-                    .thenBy { pair -> orderLookup[pair.first.videoId ?: pair.first.id] ?: Int.MAX_VALUE }
+                    .thenBy { pair ->
+                        orderLookup[pair.first.videoId ?: pair.first.id] ?: Int.MAX_VALUE
+                    }
             )
             .map { it.first }
             .take(capped)
@@ -348,7 +357,8 @@ class YouTubeApiClient {
                 if (continuation.isNullOrBlank()) {
                     endpoint.videoId.takeIf { it.isNotBlank() }?.let { put("videoId", it) }
                     endpoint.playlistId?.takeIf { it.isNotBlank() }?.let { put("playlistId", it) }
-                    endpoint.playlistSetVideoId?.takeIf { it.isNotBlank() }?.let { put("playlistSetVideoId", it) }
+                    endpoint.playlistSetVideoId?.takeIf { it.isNotBlank() }
+                        ?.let { put("playlistSetVideoId", it) }
                     endpoint.params?.takeIf { it.isNotBlank() }?.let { put("params", it) }
                     endpoint.index?.let { put("index", it) }
                 }
@@ -404,6 +414,7 @@ class YouTubeApiClient {
                     findContinuationRecursively(node.opt(iterator.next()))?.let { return it }
                 }
             }
+
             is JSONArray -> {
                 for (i in 0 until node.length()) {
                     findContinuationRecursively(node.opt(i))?.let { return it }
@@ -456,12 +467,16 @@ class YouTubeApiClient {
                             ?.let { thumbs ->
                                 var best: String? = null
                                 for (i in 0 until thumbs.length()) {
-                                    val candidate = thumbs.optJSONObject(i)?.optString("url", "")?.trim()
+                                    val candidate =
+                                        thumbs.optJSONObject(i)?.optString("url", "")?.trim()
                                     if (!candidate.isNullOrBlank()) best = candidate
                                 }
                                 best
                             }
-                        val watchEndpoint = extractWatchEndpoint(panel.optJSONObject("navigationEndpoint")?.optJSONObject("watchEndpoint"))
+                        val watchEndpoint = extractWatchEndpoint(
+                            panel.optJSONObject("navigationEndpoint")
+                                ?.optJSONObject("watchEndpoint")
+                        )
 
                         out += YouTubeVideo(
                             id = "panel:$videoId",
@@ -484,6 +499,7 @@ class YouTubeApiClient {
                     collectPlaylistPanelRenderers(node.opt(iterator.next()), out)
                 }
             }
+
             is JSONArray -> {
                 for (i in 0 until node.length()) {
                     collectPlaylistPanelRenderers(node.opt(i), out)
@@ -494,11 +510,13 @@ class YouTubeApiClient {
 
     suspend fun resolveAudioStreamUrl(videoId: String): String? {
         if (videoId.isBlank()) return null
+        getCachedStreamUrl(videoId)?.let { return it }
 
         // Metrolist-style primary path: extractor-based stream resolution first.
         val extractorCandidate = YouTubeStreamResolver.resolveBestAudioUrl(videoId)
         if (!extractorCandidate.isNullOrBlank() && isStreamPlayable(extractorCandidate)) {
             Log.i(TAG, "Resolved playable stream with extractor primary path for $videoId")
+            cacheStreamUrl(videoId, extractorCandidate)
             return extractorCandidate
         }
 
@@ -512,6 +530,7 @@ class YouTubeApiClient {
         )
         if (!webRemixCandidate.isNullOrBlank() && isStreamPlayable(webRemixCandidate)) {
             Log.i(TAG, "Resolved playable stream with WEB_REMIX player for $videoId")
+            cacheStreamUrl(videoId, webRemixCandidate)
             return webRemixCandidate
         }
 
@@ -525,10 +544,57 @@ class YouTubeApiClient {
         )
         if (!androidCandidate.isNullOrBlank() && isStreamPlayable(androidCandidate)) {
             Log.i(TAG, "Resolved playable stream with ANDROID player for $videoId")
+            cacheStreamUrl(videoId, androidCandidate)
             return androidCandidate
         }
 
         return null
+    }
+
+    suspend fun resolveAudioStreamUrlFast(videoId: String): String? {
+        if (videoId.isBlank()) return null
+        getCachedStreamUrl(videoId)?.let { return it }
+
+        val androidCandidate = resolveAudioStreamUrlWithClient(
+            videoId = videoId,
+            context = contextObjectAndroid(),
+            clientName = ANDROID_CLIENT_NAME,
+            clientVersion = ANDROID_CLIENT_VERSION,
+            clientId = ANDROID_CLIENT_ID,
+            userAgent = USER_AGENT_ANDROID
+        )
+        if (!androidCandidate.isNullOrBlank()) {
+            cacheStreamUrl(videoId, androidCandidate)
+            return androidCandidate
+        }
+
+        val webRemixCandidate = resolveAudioStreamUrlWithClient(
+            videoId = videoId,
+            context = contextObject(),
+            clientName = WEB_REMIX_CLIENT_NAME,
+            clientVersion = WEB_REMIX_CLIENT_VERSION,
+            clientId = WEB_REMIX_CLIENT_ID,
+            userAgent = USER_AGENT_WEB
+        )
+        if (!webRemixCandidate.isNullOrBlank()) {
+            cacheStreamUrl(videoId, webRemixCandidate)
+            return webRemixCandidate
+        }
+
+        return null
+    }
+
+    private fun getCachedStreamUrl(videoId: String): String? {
+        synchronized(streamUrlCache) {
+            return streamUrlCache[videoId]
+        }
+    }
+
+    private fun cacheStreamUrl(videoId: String, streamUrl: String) {
+        if (videoId.isBlank() || streamUrl.isBlank()) return
+        synchronized(streamUrlCache) {
+            streamUrlCache[videoId] = streamUrl
+        }
     }
 
     private suspend fun resolveAudioStreamUrlWithClient(
@@ -542,10 +608,12 @@ class YouTubeApiClient {
         val body = JSONObject()
             .put("context", context)
             .put("videoId", videoId)
-            .put("playbackContext", JSONObject().put(
-                "contentPlaybackContext",
-                JSONObject().put("html5Preference", "HTML5_PREF_WANTS")
-            ))
+            .put(
+                "playbackContext", JSONObject().put(
+                    "contentPlaybackContext",
+                    JSONObject().put("html5Preference", "HTML5_PREF_WANTS")
+                )
+            )
             .put("racyCheckOk", true)
             .put("contentCheckOk", true)
 
@@ -557,7 +625,8 @@ class YouTubeApiClient {
             userAgent = userAgent
         ) ?: return null
 
-        val playability = response.optJSONObject("playabilityStatus")?.optString("status", "UNKNOWN").orEmpty()
+        val playability =
+            response.optJSONObject("playabilityStatus")?.optString("status", "UNKNOWN").orEmpty()
         if (playability != "OK") {
             Log.w(TAG, "Player resolve not playable for $videoId using $clientName: $playability")
             return null
@@ -643,7 +712,8 @@ class YouTubeApiClient {
                 setRequestProperty("X-YouTube-Client-Version", clientVersion)
             }
             try {
-                connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body.toString()) }
+                connection.outputStream.bufferedWriter(Charsets.UTF_8)
+                    .use { it.write(body.toString()) }
                 val stream = if (connection.responseCode in 200..299) {
                     connection.inputStream
                 } else {
@@ -712,12 +782,15 @@ class YouTubeApiClient {
 
         if (contents != null) {
             for (i in 0 until contents.length()) {
-                val shelf = contents.optJSONObject(i)?.optJSONObject("musicShelfRenderer") ?: continue
-                val shelfTitle = shelf.optJSONObject("title")?.optJSONArray("runs")?.let(::joinRunsText)
+                val shelf =
+                    contents.optJSONObject(i)?.optJSONObject("musicShelfRenderer") ?: continue
+                val shelfTitle =
+                    shelf.optJSONObject("title")?.optJSONArray("runs")?.let(::joinRunsText)
                 val shelfEndpoint = extractShelfBrowseEndpoint(shelf)
                 val shelfItems = shelf.optJSONArray("contents") ?: continue
                 for (j in 0 until shelfItems.length()) {
-                    val renderer = shelfItems.optJSONObject(j)?.optJSONObject("musicResponsiveListItemRenderer") ?: continue
+                    val renderer = shelfItems.optJSONObject(j)
+                        ?.optJSONObject("musicResponsiveListItemRenderer") ?: continue
                     block(renderer, shelfTitle, shelfEndpoint.first, shelfEndpoint.second)
                 }
             }
@@ -738,12 +811,14 @@ class YouTubeApiClient {
         when (node) {
             is JSONObject -> {
                 node.optJSONObject("musicShelfRenderer")?.let { shelf ->
-                    val title = shelf.optJSONObject("title")?.optJSONArray("runs")?.let(::joinRunsText)
+                    val title =
+                        shelf.optJSONObject("title")?.optJSONArray("runs")?.let(::joinRunsText)
                     val endpoint = extractShelfBrowseEndpoint(shelf)
                     val shelfItems = shelf.optJSONArray("contents")
                     if (shelfItems != null) {
                         for (j in 0 until shelfItems.length()) {
-                            val renderer = shelfItems.optJSONObject(j)?.optJSONObject("musicResponsiveListItemRenderer") ?: continue
+                            val renderer = shelfItems.optJSONObject(j)
+                                ?.optJSONObject("musicResponsiveListItemRenderer") ?: continue
                             block(renderer, title, endpoint.first, endpoint.second)
                         }
                     }
@@ -788,6 +863,7 @@ class YouTubeApiClient {
                     )
                 }
             }
+
             is JSONArray -> {
                 for (i in 0 until node.length()) {
                     collectRenderersRecursively(
@@ -975,6 +1051,7 @@ class YouTubeApiClient {
                     findWatchPlaylistEndpointRecursively(node.opt(iterator.next()))?.let { return it }
                 }
             }
+
             is JSONArray -> {
                 for (i in 0 until node.length()) {
                     findWatchPlaylistEndpointRecursively(node.opt(i))?.let { return it }
@@ -984,7 +1061,11 @@ class YouTubeApiClient {
         return null
     }
 
-    private fun detectType(renderer: JSONObject, shelfTitle: String?, hasVideoId: Boolean): YouTubeItemType {
+    private fun detectType(
+        renderer: JSONObject,
+        shelfTitle: String?,
+        hasVideoId: Boolean
+    ): YouTubeItemType {
         val pageType = renderer
             .optJSONObject("navigationEndpoint")
             ?.optJSONObject("browseEndpoint")
@@ -1010,7 +1091,11 @@ class YouTubeApiClient {
             else -> when {
                 shelfTitle?.contains("artist", ignoreCase = true) == true -> YouTubeItemType.ARTIST
                 shelfTitle?.contains("album", ignoreCase = true) == true -> YouTubeItemType.ALBUM
-                shelfTitle?.contains("playlist", ignoreCase = true) == true -> YouTubeItemType.PLAYLIST
+                shelfTitle?.contains(
+                    "playlist",
+                    ignoreCase = true
+                ) == true -> YouTubeItemType.PLAYLIST
+
                 else -> YouTubeItemType.UNKNOWN
             }
         }
@@ -1074,14 +1159,18 @@ class YouTubeApiClient {
             }
     }
 
-    private fun extractBrowseEndpoint(renderer: JSONObject, titleRuns: JSONArray?): Pair<String?, String?> {
+    private fun extractBrowseEndpoint(
+        renderer: JSONObject,
+        titleRuns: JSONArray?
+    ): Pair<String?, String?> {
         val fromTitle = titleRuns
             ?.optJSONObject(0)
             ?.optJSONObject("navigationEndpoint")
             ?.optJSONObject("browseEndpoint")
         if (fromTitle != null) {
             val id = fromTitle.optString("browseId", "").trim()
-            if (id.isNotEmpty()) return id to fromTitle.optString("params", "").trim().ifEmpty { null }
+            if (id.isNotEmpty()) return id to fromTitle.optString("params", "").trim()
+                .ifEmpty { null }
         }
 
         val direct = renderer.optJSONObject("navigationEndpoint")?.optJSONObject("browseEndpoint")
@@ -1190,10 +1279,12 @@ class YouTubeApiClient {
     private fun parseArtistInfo(root: JSONObject): YouTubeArtistInfo? {
         val header = root.optJSONObject("header") ?: return null
         val description = findTextByKeys(header, setOf("description", "descriptionText"))
-        val subscriberCount = findTextByKeys(header, setOf("subscriberCountText", "subscriptionsCountText"))
-            ?: findTextContaining(header, listOf("subscriber"))
-        val monthlyListeners = findTextByKeys(header, setOf("monthlyListenerCount", "monthlyListeners"))
-            ?: findTextContaining(header, listOf("monthly", "listener"))
+        val subscriberCount =
+            findTextByKeys(header, setOf("subscriberCountText", "subscriptionsCountText"))
+                ?: findTextContaining(header, listOf("subscriber"))
+        val monthlyListeners =
+            findTextByKeys(header, setOf("monthlyListenerCount", "monthlyListeners"))
+                ?: findTextContaining(header, listOf("monthly", "listener"))
 
         if (description.isNullOrBlank() && subscriberCount.isNullOrBlank() && monthlyListeners.isNullOrBlank()) {
             return null
@@ -1218,6 +1309,7 @@ class YouTubeApiClient {
                     findTextByKeys(value, keys)?.let { return it }
                 }
             }
+
             is JSONArray -> {
                 for (i in 0 until node.length()) {
                     findTextByKeys(node.opt(i), keys)?.let { return it }
@@ -1244,6 +1336,7 @@ class YouTubeApiClient {
                     collectTexts(node.opt(iterator.next()), out)
                 }
             }
+
             is JSONArray -> {
                 for (i in 0 until node.length()) {
                     collectTexts(node.opt(i), out)
@@ -1255,12 +1348,14 @@ class YouTubeApiClient {
     private fun extractText(value: Any?): String? {
         return when (value) {
             is JSONObject -> {
-                value.optString("simpleText", "").takeIf { it.isNotBlank() }?.let(::decodeHtmlEntities)
+                value.optString("simpleText", "").takeIf { it.isNotBlank() }
+                    ?.let(::decodeHtmlEntities)
                     ?: value.optJSONArray("runs")
                         ?.let(::joinRunsText)
                         ?.takeIf { it.isNotBlank() }
                         ?.let(::decodeHtmlEntities)
             }
+
             is JSONArray -> {
                 val text = StringBuilder()
                 for (i in 0 until value.length()) {
@@ -1269,6 +1364,7 @@ class YouTubeApiClient {
                 }
                 text.toString().trim().takeIf { it.isNotBlank() }?.let(::decodeHtmlEntities)
             }
+
             is String -> value.trim().takeIf { it.isNotBlank() }?.let(::decodeHtmlEntities)
             else -> null
         }

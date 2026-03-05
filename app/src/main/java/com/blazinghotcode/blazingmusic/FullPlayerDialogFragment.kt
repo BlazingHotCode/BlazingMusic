@@ -29,6 +29,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Full-screen player dialog with gesture-based dismiss and queue handoff controls. */
 class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
@@ -41,6 +42,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60
         private const val RADIO_RESOLVE_PARALLELISM = 6
+        private const val RADIO_RESOLVE_TIMEOUT_MS = 6000L
     }
 
     private val viewModel: MusicViewModel by activityViewModels()
@@ -497,7 +499,9 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
             .mapIndexed { index, item ->
                 async(Dispatchers.IO) {
                     semaphore.withPermit {
-                        val song = resolvePlayableRadioSong(item) ?: return@withPermit null
+                        val song = withTimeoutOrNull<Song?>(RADIO_RESOLVE_TIMEOUT_MS) {
+                            resolvePlayableRadioSong(item)
+                        } ?: return@withPermit null
                         index to song
                     }
                 }

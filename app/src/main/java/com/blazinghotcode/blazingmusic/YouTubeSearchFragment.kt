@@ -29,6 +29,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Embedded YouTube tab screen shown inside MainActivity.
@@ -352,7 +353,9 @@ class YouTubeSearchFragment : Fragment() {
                 async(Dispatchers.IO) {
                     semaphore.withPermit {
                         val videoId = item.videoId ?: return@withPermit null
-                        val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return@withPermit null
+                        val streamUrl = withTimeoutOrNull<String?>(RADIO_RESOLVE_TIMEOUT_MS) {
+                            runCatching { apiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull()
+                        } ?: return@withPermit null
                         index to item.toSong(streamUrl)
                     }
                 }
@@ -422,6 +425,7 @@ class YouTubeSearchFragment : Fragment() {
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60
         private const val RADIO_RESOLVE_PARALLELISM = 6
+        private const val RADIO_RESOLVE_TIMEOUT_MS = 6000L
     }
 
 }
