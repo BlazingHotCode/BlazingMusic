@@ -247,6 +247,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         }
 
         viewModel.currentSong.observe(viewLifecycleOwner) { song ->
+            songAdapter.setCurrentSong(song)
             song?.let {
                 playerLayout.visibility = View.VISIBLE
                 tvSongTitle.text = it.title

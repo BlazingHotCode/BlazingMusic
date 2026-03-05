@@ -17,6 +17,7 @@ class SongAdapter(
 ) : ListAdapter<Song, SongAdapter.SongViewHolder>(SongDiffCallback()) {
     private var isSelectionModeEnabled = false
     private val selectedSongPaths = linkedSetOf<String>()
+    private var currentSongPath: String? = null
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
         val binding = ItemSongBinding.inflate(
@@ -41,6 +42,13 @@ class SongAdapter(
     fun isSelectionMode(): Boolean = isSelectionModeEnabled
 
     fun getSelectedSongs(): List<Song> = currentList.filter { it.path in selectedSongPaths }
+
+    fun setCurrentSong(song: Song?) {
+        val newPath = song?.path
+        if (currentSongPath == newPath) return
+        currentSongPath = newPath
+        notifyDataSetChanged()
+    }
 
     fun enterSelectionMode(initialSong: Song? = null) {
         if (!isSelectionModeEnabled) {
@@ -99,9 +107,14 @@ class SongAdapter(
         }
 
         fun bind(song: Song) {
+            val isNowPlaying = song.path == currentSongPath
             binding.tvTitle.text = song.title
             binding.tvArtist.text = song.artist
             binding.tvDuration.text = formatDuration(song.duration)
+            binding.tvNowPlaying.visibility = if (isNowPlaying) View.VISIBLE else View.GONE
+            binding.root.setBackgroundResource(
+                if (isNowPlaying) R.drawable.bg_song_item_now_playing else R.drawable.bg_song_item
+            )
             val inSelectionMode = isSelectionModeEnabled
             animateSelectionModeViews(inSelectionMode)
 

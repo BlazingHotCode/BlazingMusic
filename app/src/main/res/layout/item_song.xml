@@ -62,10 +62,25 @@
         android:textColor="@color/text_secondary"
         android:textSize="12sp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/btnSongMore"
+        app:layout_constraintEnd_toStartOf="@id/tvNowPlaying"
         app:layout_constraintStart_toEndOf="@id/ivAlbumArt"
         app:layout_constraintTop_toBottomOf="@id/tvTitle"
         tools:text="Artist" />
+
+    <TextView
+        android:id="@+id/tvNowPlaying"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:text="Now Playing"
+        android:textAllCaps="true"
+        android:textColor="@color/accent_lavender"
+        android:textSize="10sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/tvArtist"
+        app:layout_constraintEnd_toStartOf="@id/btnSongMore"
+        app:layout_constraintTop_toTopOf="@id/tvArtist"
+        tools:visibility="visible" />
 
     <TextView
         android:id="@+id/tvDuration"

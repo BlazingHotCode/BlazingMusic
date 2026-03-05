@@ -251,6 +251,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.currentSong.observe(this) { song ->
+            songAdapter.setCurrentSong(song)
             song?.let {
                 playerLayout.visibility = View.VISIBLE
                 tvSongTitle.text = it.title
