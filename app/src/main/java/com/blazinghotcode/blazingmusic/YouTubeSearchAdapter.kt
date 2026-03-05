@@ -32,7 +32,16 @@ class YouTubeSearchAdapter(
 
         fun bind(video: YouTubeVideo) {
             binding.tvVideoTitle.text = video.title
-            binding.tvChannelTitle.text = video.channelTitle
+            val typeLabel = when (video.type) {
+                YouTubeItemType.SONG -> "Song"
+                YouTubeItemType.VIDEO -> "Video"
+                YouTubeItemType.ARTIST -> "Artist"
+                YouTubeItemType.ALBUM -> "Album"
+                YouTubeItemType.PLAYLIST -> "Playlist"
+                YouTubeItemType.UNKNOWN -> "Item"
+            }
+            val subtitle = video.channelTitle.ifBlank { "YouTube Music" }
+            binding.tvChannelTitle.text = "$typeLabel • $subtitle"
             video.thumbnailUrl?.let { url ->
                 binding.ivVideoThumb.load(url) {
                     crossfade(true)
@@ -53,4 +62,3 @@ class YouTubeSearchAdapter(
         }
     }
 }
-
