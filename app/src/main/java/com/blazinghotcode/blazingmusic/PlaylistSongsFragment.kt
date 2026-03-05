@@ -58,6 +58,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     private lateinit var btnPlayAll: Button
     private lateinit var btnShuffleList: Button
     private lateinit var btnSortList: Button
+    private lateinit var songAlphabetIndex: AlphabetIndexView
     private lateinit var rvSongs: RecyclerView
     private lateinit var btnBack: ImageButton
 
@@ -115,6 +116,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         btnPlayAll = root.findViewById(R.id.btnPlayAll)
         btnShuffleList = root.findViewById(R.id.btnShuffleList)
         btnSortList = root.findViewById(R.id.btnSortList)
+        songAlphabetIndex = root.findViewById(R.id.songAlphabetIndex)
         rvSongs = root.findViewById(R.id.rvSongs)
         btnBack = root.findViewById(R.id.btnBack)
 
@@ -165,6 +167,9 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         rvSongs.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = songAdapter
+        }
+        songAlphabetIndex.setOnSectionSelectedListener { section ->
+            scrollSongsToSection(section)
         }
 
         val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
@@ -620,19 +625,82 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
                 compareByDescending<Song> { it.dateAddedSeconds }.thenBy { it.title.lowercase() }
             )
         }
+        if (supportsAlphabetIndexForCurrentSort()) {
+            songAlphabetIndex.setAvailableSections(
+                filteredSongs.asSequence()
+                    .map { sectionFromCurrentSort(it) }
+                    .toSet()
+            )
+        } else {
+            songAlphabetIndex.setAvailableSections(emptySet())
+        }
         if (preserveScrollOffset) {
             songAdapter.submitList(filteredSongs) {
                 rvSongs.post {
                     val currentOffset = rvSongs.computeVerticalScrollOffset()
                     rvSongs.scrollBy(0, previousOffset - currentOffset)
                 }
+                refreshSongAlphabetIndexVisibility()
             }
         } else {
-            songAdapter.submitList(filteredSongs)
+            songAdapter.submitList(filteredSongs) {
+                refreshSongAlphabetIndexVisibility()
+            }
         }
         tvEmpty.visibility = if (filteredSongs.isEmpty()) View.VISIBLE else View.GONE
         val countWord = if (filteredSongs.size == 1) "song" else "songs"
         tvSubtitle.text = "${filteredSongs.size} $countWord"
+    }
+
+    private fun scrollSongsToSection(section: Char) {
+        val songs = songAdapter.currentList
+        if (songs.isEmpty()) return
+        val targetIndex = findSectionTargetIndex(songs, section)
+        if (targetIndex == -1) return
+        val layoutManager = rvSongs.layoutManager as? LinearLayoutManager ?: return
+        layoutManager.scrollToPositionWithOffset(targetIndex, 0)
+    }
+
+    private fun findSectionTargetIndex(songs: List<Song>, section: Char): Int {
+        val exactMatch = songs.indexOfFirst { sectionFromCurrentSort(it) == section }
+        if (exactMatch >= 0) return exactMatch
+        if (section == '#') return 0
+        val fallback = songs.indexOfFirst {
+            val key = sectionFromCurrentSort(it)
+            key in 'A'..'Z' && key > section
+        }
+        return if (fallback >= 0) fallback else songs.lastIndex
+    }
+
+    private fun sectionFromCurrentSort(song: Song): Char {
+        val key = when (currentSongSort) {
+            PlaylistSongSortOption.TITLE -> song.title
+            PlaylistSongSortOption.ARTIST -> song.artist
+            PlaylistSongSortOption.ALBUM -> song.album
+            PlaylistSongSortOption.CUSTOM,
+            PlaylistSongSortOption.DURATION,
+            PlaylistSongSortOption.RECENTLY_ADDED -> song.title
+        }
+        val first = key.trim().firstOrNull()?.uppercaseChar() ?: return '#'
+        return if (first in 'A'..'Z') first else '#'
+    }
+
+    private fun supportsAlphabetIndexForCurrentSort(): Boolean {
+        return when (currentSongSort) {
+            PlaylistSongSortOption.TITLE,
+            PlaylistSongSortOption.ARTIST,
+            PlaylistSongSortOption.ALBUM -> true
+            PlaylistSongSortOption.CUSTOM,
+            PlaylistSongSortOption.DURATION,
+            PlaylistSongSortOption.RECENTLY_ADDED -> false
+        }
+    }
+
+    private fun refreshSongAlphabetIndexVisibility() {
+        val hasSongs = songAdapter.currentList.isNotEmpty()
+        val shouldShow = hasSongs && supportsAlphabetIndexForCurrentSort()
+        songAlphabetIndex.visibility = if (shouldShow) View.VISIBLE else View.GONE
+        rvSongs.isVerticalScrollBarEnabled = hasSongs && !shouldShow
     }
 
     private fun canDragCustomOrder(): Boolean {

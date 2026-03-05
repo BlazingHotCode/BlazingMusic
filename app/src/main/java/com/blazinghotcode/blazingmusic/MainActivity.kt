@@ -83,6 +83,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTotalTime: TextView
     private lateinit var etSearch: EditText
     private lateinit var btnSortSongs: Button
+    private lateinit var songAlphabetIndex: AlphabetIndexView
     private var allSongs: List<Song> = emptyList()
     private var playlists: List<Playlist> = emptyList()
     private var queueSongs: List<Song> = emptyList()
@@ -187,6 +188,7 @@ class MainActivity : AppCompatActivity() {
         tvTotalTime = findViewById(R.id.tvTotalTime)
         etSearch = findViewById(R.id.etSearch)
         btnSortSongs = findViewById(R.id.btnSortSongs)
+        songAlphabetIndex = findViewById(R.id.songAlphabetIndex)
         playlistContainer = findViewById(R.id.playlistContainer)
         currentSongSort = loadHomeSort()
         tintSearchStartIcon()
@@ -213,6 +215,9 @@ class MainActivity : AppCompatActivity() {
         rvSongs.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = songAdapter
+        }
+        songAlphabetIndex.setOnSectionSelectedListener { section ->
+            scrollSongsToSection(section)
         }
     }
 
@@ -1103,16 +1108,78 @@ class MainActivity : AppCompatActivity() {
                     .thenBy { it.title.lowercase() }
             )
         }
+        if (supportsAlphabetIndexForCurrentSort()) {
+            songAlphabetIndex.setAvailableSections(
+                sorted.asSequence()
+                    .map { sectionFromCurrentSort(it) }
+                    .toSet()
+            )
+        } else {
+            songAlphabetIndex.setAvailableSections(emptySet())
+        }
         if (preserveScrollOffset) {
             songAdapter.submitList(sorted) {
                 rvSongs.post {
                     val currentOffset = rvSongs.computeVerticalScrollOffset()
                     rvSongs.scrollBy(0, previousOffset - currentOffset)
                 }
+                refreshSongAlphabetIndexVisibility()
             }
         } else {
-            songAdapter.submitList(sorted)
+            songAdapter.submitList(sorted) {
+                refreshSongAlphabetIndexVisibility()
+            }
         }
+    }
+
+    private fun scrollSongsToSection(section: Char) {
+        val songs = songAdapter.currentList
+        if (songs.isEmpty()) return
+        val targetIndex = findSectionTargetIndex(songs, section)
+        if (targetIndex == -1) return
+        val layoutManager = rvSongs.layoutManager as? LinearLayoutManager ?: return
+        layoutManager.scrollToPositionWithOffset(targetIndex, 0)
+    }
+
+    private fun findSectionTargetIndex(songs: List<Song>, section: Char): Int {
+        val exactMatch = songs.indexOfFirst { sectionFromCurrentSort(it) == section }
+        if (exactMatch >= 0) return exactMatch
+        if (section == '#') return 0
+        val fallback = songs.indexOfFirst {
+            val key = sectionFromCurrentSort(it)
+            key in 'A'..'Z' && key > section
+        }
+        return if (fallback >= 0) fallback else songs.lastIndex
+    }
+
+    private fun sectionFromCurrentSort(song: Song): Char {
+        val key = when (currentSongSort) {
+            SongSortOption.TITLE -> song.title
+            SongSortOption.ARTIST -> song.artist
+            SongSortOption.ALBUM -> song.album
+            SongSortOption.DURATION,
+            SongSortOption.RECENTLY_ADDED -> song.title
+        }
+        val first = key.trim().firstOrNull()?.uppercaseChar() ?: return '#'
+        return if (first in 'A'..'Z') first else '#'
+    }
+
+    private fun supportsAlphabetIndexForCurrentSort(): Boolean {
+        return when (currentSongSort) {
+            SongSortOption.TITLE,
+            SongSortOption.ARTIST,
+            SongSortOption.ALBUM -> true
+            SongSortOption.DURATION,
+            SongSortOption.RECENTLY_ADDED -> false
+        }
+    }
+
+    private fun refreshSongAlphabetIndexVisibility() {
+        val isOnHomeTab = playlistContainer.visibility != View.VISIBLE
+        val hasSongs = songAdapter.currentList.isNotEmpty()
+        val shouldShow = isOnHomeTab && hasSongs && supportsAlphabetIndexForCurrentSort()
+        songAlphabetIndex.visibility = if (shouldShow) View.VISIBLE else View.GONE
+        rvSongs.isVerticalScrollBarEnabled = isOnHomeTab && hasSongs && !shouldShow
     }
 
     private fun tintSearchStartIcon() {
@@ -1221,6 +1288,7 @@ class MainActivity : AppCompatActivity() {
                 .commit()
         }
         updateBottomNavSelection(homeSelected = false)
+        refreshSongAlphabetIndexVisibility()
     }
 
     fun openPlaylistSongs(playlistId: Long, playlistName: String) {
@@ -1241,6 +1309,7 @@ class MainActivity : AppCompatActivity() {
     fun openHomeTab() {
         if (playlistContainer.visibility != View.VISIBLE) {
             updateBottomNavSelection(homeSelected = true)
+            refreshSongAlphabetIndexVisibility()
             return
         }
         supportFragmentManager.popBackStackImmediate(
@@ -1254,6 +1323,7 @@ class MainActivity : AppCompatActivity() {
             .withEndAction {
                 playlistContainer.visibility = View.GONE
                 playlistContainer.translationX = 0f
+                refreshSongAlphabetIndexVisibility()
             }
             .start()
         updateBottomNavSelection(homeSelected = true)
