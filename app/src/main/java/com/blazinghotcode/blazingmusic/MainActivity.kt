@@ -92,6 +92,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTotalTime: TextView
     private lateinit var etSearch: EditText
     private lateinit var btnSortSongs: Button
+    private lateinit var btnYouTube: ImageButton
     private lateinit var btnSettings: ImageButton
     private lateinit var homeStateContainer: View
     private lateinit var tvHomeStateTitle: TextView
@@ -227,6 +228,7 @@ class MainActivity : AppCompatActivity() {
         tvTotalTime = findViewById(R.id.tvTotalTime)
         etSearch = findViewById(R.id.etSearch)
         btnSortSongs = findViewById(R.id.btnSortSongs)
+        btnYouTube = findViewById(R.id.btnYouTube)
         btnSettings = findViewById(R.id.btnSettings)
         homeStateContainer = findViewById(R.id.homeStateContainer)
         tvHomeStateTitle = findViewById(R.id.tvHomeStateTitle)
@@ -239,6 +241,9 @@ class MainActivity : AppCompatActivity() {
         playlistContainer = findViewById(R.id.playlistContainer)
         currentSongSort = loadHomeSort()
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
+        btnYouTube.setOnClickListener {
+            startActivity(Intent(this, YouTubeSearchActivity::class.java))
+        }
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }

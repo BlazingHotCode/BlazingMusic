@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <!-- Show notifications - Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Network access for YouTube search integration -->
+    <uses-permission android:name="android.permission.INTERNET"/>
 
     <!-- ============== APPLICATION ============== -->
     <application
@@ -40,6 +42,11 @@
 
         <activity
                 android:name=".SettingsActivity"
+                android:exported="false"
+                android:theme="@style/Theme.BlazingMusic" />
+
+        <activity
+                android:name=".YouTubeSearchActivity"
                 android:exported="false"
                 android:theme="@style/Theme.BlazingMusic" />
 

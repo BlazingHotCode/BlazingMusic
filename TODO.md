@@ -31,5 +31,6 @@
 29. [x] Add tests for MusicViewModel playback transitions (next/prev/repeat/shuffle).
 30. [x] Add analytics/logging hooks for playback errors and skips.
 31. [x] Add settings screen for default repeat/shuffle behavior and audio focus options.
-32. [ ] Add YouTube API integration to fetch/play songs from YouTube sources.
-33. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.
+32. [x] Add YouTube API integration to fetch/play songs from YouTube sources.
+33. [ ] Replace YouTube Music handoff with Metrolist-style in-app YouTube audio playback (no external app handoff).
+34. [ ] Add Google account sign-in and sync for playlists, saved songs, and related library data.

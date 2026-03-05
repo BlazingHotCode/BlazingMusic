@@ -11,6 +11,7 @@ val keystoreFile = rootProject.file("keystore.properties")
 if (keystoreFile.exists()) {
     keystoreProperties.load(keystoreFile.inputStream())
 }
+val youtubeApiKey = providers.gradleProperty("YOUTUBE_API_KEY").getOrElse("")
 
 android {
     namespace = "com.blazinghotcode.blazingmusic"
@@ -19,6 +20,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     defaultConfig {
@@ -27,6 +29,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeApiKey\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
