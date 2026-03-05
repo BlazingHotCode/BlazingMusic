@@ -21,8 +21,14 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import coil.load
 import coil.transform.RoundedCornersTransformation
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /** Full-screen player dialog with gesture-based dismiss and queue handoff controls. */
 class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
@@ -32,6 +38,9 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         private const val MENU_SONG_RADIO_UP_NEXT = 1
         private const val MENU_SHUFFLE_UPCOMING = 2
         private const val MENU_CLEAR_UPCOMING = 3
+        private const val RADIO_TARGET_SIZE = 30
+        private const val RADIO_CANDIDATE_LIMIT = 60
+        private const val RADIO_RESOLVE_PARALLELISM = 6
     }
 
     private val viewModel: MusicViewModel by activityViewModels()
@@ -421,11 +430,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
                 return@launch
             }
 
-            val resolved = mutableListOf<Song>()
-            for (candidate in candidates) {
-                val playable = resolvePlayableRadioSong(candidate) ?: continue
-                resolved += playable
-            }
+            val resolved = resolvePlayableRadioSongsFast(candidates)
 
             if (resolved.isEmpty()) {
                 showToast("Unable to build playable radio queue")
@@ -468,8 +473,6 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
     private suspend fun resolvePlayableRadioSong(item: YouTubeVideo): Song? {
         val videoId = item.videoId ?: return null
         val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return null
-        val playable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
-        if (!playable) return null
         return Song(
             id = (item.id.hashCode().toLong() and 0x7fffffffL) + 10_000_000_000L,
             title = item.title,
@@ -485,6 +488,25 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
             sourceParams = item.sourceParams,
             sourceIndex = item.sourceIndex
         )
+    }
+
+    private suspend fun resolvePlayableRadioSongsFast(items: List<YouTubeVideo>): List<Song> = coroutineScope {
+        val semaphore = Semaphore(RADIO_RESOLVE_PARALLELISM)
+        items
+            .take(RADIO_CANDIDATE_LIMIT)
+            .mapIndexed { index, item ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        val song = resolvePlayableRadioSong(item) ?: return@withPermit null
+                        index to song
+                    }
+                }
+            }
+            .awaitAll()
+            .filterNotNull()
+            .sortedBy { it.first }
+            .map { it.second }
+            .take(RADIO_TARGET_SIZE)
     }
 
     private fun showToast(message: String) {

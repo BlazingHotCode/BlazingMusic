@@ -21,8 +21,14 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * Embedded YouTube tab screen shown inside MainActivity.
@@ -318,9 +324,7 @@ class YouTubeSearchFragment : Fragment() {
                 .toList()
 
             val resolved = mutableListOf<Song>()
-            for (candidate in candidates) {
-                resolvePlayableSong(candidate)?.let { resolved += it }
-            }
+            resolved += resolveRadioSongsFast(candidates)
             if (resolved.isEmpty()) {
                 showToast("No radio recommendations found")
                 showState("No radio recommendations found.")
@@ -338,6 +342,26 @@ class YouTubeSearchFragment : Fragment() {
         val playable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
         if (!playable) return null
         return item.toSong(streamUrl)
+    }
+
+    private suspend fun resolveRadioSongsFast(items: List<YouTubeVideo>): List<Song> = coroutineScope {
+        val semaphore = Semaphore(RADIO_RESOLVE_PARALLELISM)
+        items
+            .take(RADIO_CANDIDATE_LIMIT)
+            .mapIndexed { index, item ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        val videoId = item.videoId ?: return@withPermit null
+                        val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return@withPermit null
+                        index to item.toSong(streamUrl)
+                    }
+                }
+            }
+            .awaitAll()
+            .filterNotNull()
+            .sortedBy { it.first }
+            .map { it.second }
+            .take(RADIO_TARGET_SIZE)
     }
 
     private fun YouTubeVideo.toSong(streamUrl: String): Song {
@@ -395,6 +419,9 @@ class YouTubeSearchFragment : Fragment() {
         private const val MENU_ADD_QUEUE = 3
         private const val MENU_SONG_RADIO_UP_NEXT = 4
         private const val MENU_OPEN_ALBUM = 5
+        private const val RADIO_TARGET_SIZE = 30
+        private const val RADIO_CANDIDATE_LIMIT = 60
+        private const val RADIO_RESOLVE_PARALLELISM = 6
     }
 
 }

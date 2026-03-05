@@ -15,11 +15,14 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlin.random.Random
 
 /**
@@ -277,22 +280,11 @@ class YouTubeBrowseFragment : Fragment() {
                     return@radioBuild
                 }
 
-                var loaded = 0
-                var added = 0
-                val total = candidates.size
-                val resolved = mutableListOf<Song>()
-                candidates.forEach { candidate ->
-                    loaded += 1
-                    val playable = resolvePlayableSong(candidate)
-                    if (playable != null) {
-                        added += 1
-                        resolved += playable
-                    }
-                    showState("Building radio $loaded/$total...")
-                }
+                showState("Building radio recommendations...")
+                val resolved = resolveRadioSongsFast(candidates)
 
                 (activity as? MainActivity)?.replaceUpcomingQueue(resolved)
-                showState("Radio ready. Added $added recommendations.")
+                showState("Radio ready. Added ${resolved.size} recommendations.")
             }
         }
     }
@@ -362,6 +354,26 @@ class YouTubeBrowseFragment : Fragment() {
         val streamPlayable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
         if (!streamPlayable) return null
         return item.toSong(streamUrl)
+    }
+
+    private suspend fun resolveRadioSongsFast(items: List<YouTubeVideo>): List<Song> = coroutineScope {
+        val semaphore = Semaphore(RADIO_RESOLVE_PARALLELISM)
+        items
+            .take(RADIO_CANDIDATE_LIMIT)
+            .mapIndexed { index, item ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        val videoId = item.videoId ?: return@withPermit null
+                        val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull() ?: return@withPermit null
+                        index to item.toSong(streamUrl)
+                    }
+                }
+            }
+            .awaitAll()
+            .filterNotNull()
+            .sortedBy { it.first }
+            .map { it.second }
+            .take(RADIO_TARGET_SIZE)
     }
 
     private suspend fun resolveFirstPlayableSong(items: List<YouTubeVideo>): Pair<YouTubeVideo, Song>? {
@@ -650,6 +662,9 @@ class YouTubeBrowseFragment : Fragment() {
 
     companion object {
         private const val MENU_OPEN_ALBUM = 1
+        private const val RADIO_TARGET_SIZE = 30
+        private const val RADIO_CANDIDATE_LIMIT = 60
+        private const val RADIO_RESOLVE_PARALLELISM = 6
         private const val ARTIST_PAGE_PREFS = "blazing_music_artist_page_prefs"
         private const val KEY_SHOW_ARTIST_DESCRIPTION = "show_artist_description"
         private const val KEY_SHOW_ARTIST_SUBSCRIBERS = "show_artist_subscriber_count"
