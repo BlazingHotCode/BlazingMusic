@@ -394,7 +394,10 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
                 currentSongSort = selected
                 persistSortForCurrentPlaylist(selected)
                 updateSortButtonLabel()
-                applySongFilter(etSearchSongs.text?.toString().orEmpty())
+                applySongFilter(
+                    query = etSearchSongs.text?.toString().orEmpty(),
+                    preserveScrollOffset = true
+                )
                 true
             }
             show()
@@ -473,7 +476,8 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         }
     }
 
-    private fun applySongFilter(query: String) {
+    private fun applySongFilter(query: String, preserveScrollOffset: Boolean = false) {
+        val previousOffset = if (preserveScrollOffset) rvSongs.computeVerticalScrollOffset() else 0
         val normalized = query.trim().lowercase()
         val base = if (normalized.isEmpty()) {
             playlistSongs
@@ -502,7 +506,16 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
                 compareByDescending<Song> { it.dateAddedSeconds }.thenBy { it.title.lowercase() }
             )
         }
-        songAdapter.submitList(filteredSongs)
+        if (preserveScrollOffset) {
+            songAdapter.submitList(filteredSongs) {
+                rvSongs.post {
+                    val currentOffset = rvSongs.computeVerticalScrollOffset()
+                    rvSongs.scrollBy(0, previousOffset - currentOffset)
+                }
+            }
+        } else {
+            songAdapter.submitList(filteredSongs)
+        }
         tvEmpty.visibility = if (filteredSongs.isEmpty()) View.VISIBLE else View.GONE
         val countWord = if (filteredSongs.size == 1) "song" else "songs"
         tvSubtitle.text = "${filteredSongs.size} $countWord"
