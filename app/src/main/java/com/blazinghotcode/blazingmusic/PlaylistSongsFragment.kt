@@ -59,6 +59,8 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     private lateinit var btnShuffleList: Button
     private lateinit var btnSortList: Button
     private lateinit var songAlphabetIndex: AlphabetIndexView
+    private lateinit var songScrollTrack: View
+    private lateinit var songScrollThumb: View
     private lateinit var rvSongs: RecyclerView
     private lateinit var btnBack: ImageButton
 
@@ -95,6 +97,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     private var shouldRestartQueue = false
     private val searchDebounceHandler = Handler(Looper.getMainLooper())
     private var searchDebounceRunnable: Runnable? = null
+    private var isSongScrollDragging = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -117,6 +120,8 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         btnShuffleList = root.findViewById(R.id.btnShuffleList)
         btnSortList = root.findViewById(R.id.btnSortList)
         songAlphabetIndex = root.findViewById(R.id.songAlphabetIndex)
+        songScrollTrack = root.findViewById(R.id.songScrollTrack)
+        songScrollThumb = root.findViewById(R.id.songScrollThumb)
         rvSongs = root.findViewById(R.id.rvSongs)
         btnBack = root.findViewById(R.id.btnBack)
 
@@ -168,6 +173,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = songAdapter
         }
+        setupSongScrollThumb()
         songAlphabetIndex.setOnSectionSelectedListener { section ->
             scrollSongsToSection(section)
         }
@@ -230,6 +236,31 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             }
         })
         itemTouchHelper.attachToRecyclerView(rvSongs)
+    }
+
+    private fun setupSongScrollThumb() {
+        rvSongs.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                if (!isSongScrollDragging) {
+                    updateSongScrollThumbPosition()
+                }
+            }
+        })
+        songScrollThumb.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    isSongScrollDragging = true
+                    scrollSongsByThumbTouch(event.rawY)
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    isSongScrollDragging = false
+                    updateSongScrollThumbPosition()
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     private fun setupPlayerControls() {
@@ -661,6 +692,29 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         layoutManager.scrollToPositionWithOffset(targetIndex, 0)
     }
 
+    private fun scrollSongsByThumbTouch(rawY: Float) {
+        if (songScrollTrack.height <= 0) return
+        val location = IntArray(2)
+        songScrollTrack.getLocationOnScreen(location)
+        val trackTop = location[1].toFloat()
+        val fraction = ((rawY - trackTop) / songScrollTrack.height.toFloat()).coerceIn(0f, 1f)
+        val scrollRange = (rvSongs.computeVerticalScrollRange() - rvSongs.computeVerticalScrollExtent())
+            .coerceAtLeast(0)
+        val targetOffset = (scrollRange * fraction).toInt()
+        val currentOffset = rvSongs.computeVerticalScrollOffset()
+        rvSongs.scrollBy(0, targetOffset - currentOffset)
+        updateSongScrollThumbPosition()
+    }
+
+    private fun updateSongScrollThumbPosition() {
+        if (songScrollThumb.visibility != View.VISIBLE || songScrollTrack.height <= 0) return
+        val scrollRange = (rvSongs.computeVerticalScrollRange() - rvSongs.computeVerticalScrollExtent())
+            .coerceAtLeast(0)
+        val fraction = if (scrollRange == 0) 0f else rvSongs.computeVerticalScrollOffset() / scrollRange.toFloat()
+        val travel = (songScrollTrack.height - songScrollThumb.height).coerceAtLeast(0)
+        songScrollThumb.translationY = travel * fraction
+    }
+
     private fun findSectionTargetIndex(songs: List<Song>, section: Char): Int {
         val exactMatch = songs.indexOfFirst { sectionFromCurrentSort(it) == section }
         if (exactMatch >= 0) return exactMatch
@@ -700,7 +754,11 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         val hasSongs = songAdapter.currentList.isNotEmpty()
         val shouldShow = hasSongs && supportsAlphabetIndexForCurrentSort()
         songAlphabetIndex.visibility = if (shouldShow) View.VISIBLE else View.GONE
-        rvSongs.isVerticalScrollBarEnabled = hasSongs && !shouldShow
+        songScrollTrack.visibility = if (hasSongs) View.VISIBLE else View.GONE
+        songScrollThumb.visibility = if (hasSongs) View.VISIBLE else View.GONE
+        if (hasSongs) {
+            rvSongs.post { updateSongScrollThumbPosition() }
+        }
     }
 
     private fun canDragCustomOrder(): Boolean {

@@ -84,6 +84,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etSearch: EditText
     private lateinit var btnSortSongs: Button
     private lateinit var songAlphabetIndex: AlphabetIndexView
+    private lateinit var songScrollTrack: View
+    private lateinit var songScrollThumb: View
     private var allSongs: List<Song> = emptyList()
     private var playlists: List<Playlist> = emptyList()
     private var queueSongs: List<Song> = emptyList()
@@ -106,6 +108,7 @@ class MainActivity : AppCompatActivity() {
     }
     private val handler = Handler(Looper.getMainLooper())
     private var searchDebounceRunnable: Runnable? = null
+    private var isSongScrollDragging = false
     private val updateSeekbarRunnable = object : Runnable {
         override fun run() {
             val position = viewModel.getCurrentPosition()
@@ -189,6 +192,8 @@ class MainActivity : AppCompatActivity() {
         etSearch = findViewById(R.id.etSearch)
         btnSortSongs = findViewById(R.id.btnSortSongs)
         songAlphabetIndex = findViewById(R.id.songAlphabetIndex)
+        songScrollTrack = findViewById(R.id.songScrollTrack)
+        songScrollThumb = findViewById(R.id.songScrollThumb)
         playlistContainer = findViewById(R.id.playlistContainer)
         currentSongSort = loadHomeSort()
         tintSearchStartIcon()
@@ -216,8 +221,34 @@ class MainActivity : AppCompatActivity() {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = songAdapter
         }
+        setupSongScrollThumb()
         songAlphabetIndex.setOnSectionSelectedListener { section ->
             scrollSongsToSection(section)
+        }
+    }
+
+    private fun setupSongScrollThumb() {
+        rvSongs.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                if (!isSongScrollDragging) {
+                    updateSongScrollThumbPosition()
+                }
+            }
+        })
+        songScrollThumb.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    isSongScrollDragging = true
+                    scrollSongsByThumbTouch(event.rawY)
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    isSongScrollDragging = false
+                    updateSongScrollThumbPosition()
+                    true
+                }
+                else -> false
+            }
         }
     }
 
@@ -1141,6 +1172,29 @@ class MainActivity : AppCompatActivity() {
         layoutManager.scrollToPositionWithOffset(targetIndex, 0)
     }
 
+    private fun scrollSongsByThumbTouch(rawY: Float) {
+        if (songScrollTrack.height <= 0) return
+        val location = IntArray(2)
+        songScrollTrack.getLocationOnScreen(location)
+        val trackTop = location[1].toFloat()
+        val fraction = ((rawY - trackTop) / songScrollTrack.height.toFloat()).coerceIn(0f, 1f)
+        val scrollRange = (rvSongs.computeVerticalScrollRange() - rvSongs.computeVerticalScrollExtent())
+            .coerceAtLeast(0)
+        val targetOffset = (scrollRange * fraction).toInt()
+        val currentOffset = rvSongs.computeVerticalScrollOffset()
+        rvSongs.scrollBy(0, targetOffset - currentOffset)
+        updateSongScrollThumbPosition()
+    }
+
+    private fun updateSongScrollThumbPosition() {
+        if (songScrollThumb.visibility != View.VISIBLE || songScrollTrack.height <= 0) return
+        val scrollRange = (rvSongs.computeVerticalScrollRange() - rvSongs.computeVerticalScrollExtent())
+            .coerceAtLeast(0)
+        val fraction = if (scrollRange == 0) 0f else rvSongs.computeVerticalScrollOffset() / scrollRange.toFloat()
+        val travel = (songScrollTrack.height - songScrollThumb.height).coerceAtLeast(0)
+        songScrollThumb.translationY = travel * fraction
+    }
+
     private fun findSectionTargetIndex(songs: List<Song>, section: Char): Int {
         val exactMatch = songs.indexOfFirst { sectionFromCurrentSort(it) == section }
         if (exactMatch >= 0) return exactMatch
@@ -1179,7 +1233,12 @@ class MainActivity : AppCompatActivity() {
         val hasSongs = songAdapter.currentList.isNotEmpty()
         val shouldShow = isOnHomeTab && hasSongs && supportsAlphabetIndexForCurrentSort()
         songAlphabetIndex.visibility = if (shouldShow) View.VISIBLE else View.GONE
-        rvSongs.isVerticalScrollBarEnabled = isOnHomeTab && hasSongs && !shouldShow
+        val showScroll = isOnHomeTab && hasSongs
+        songScrollTrack.visibility = if (showScroll) View.VISIBLE else View.GONE
+        songScrollThumb.visibility = if (showScroll) View.VISIBLE else View.GONE
+        if (showScroll) {
+            rvSongs.post { updateSongScrollThumbPosition() }
+        }
     }
 
     private fun tintSearchStartIcon() {

@@ -134,10 +134,33 @@
         android:fadeScrollbars="false"
         android:paddingEnd="6dp"
         android:paddingBottom="10dp"
+        android:scrollbars="none"
         app:layout_constraintBottom_toTopOf="@id/playerLayout"
         app:layout_constraintEnd_toStartOf="@id/songAlphabetIndex"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnPlayAll" />
+
+    <View
+        android:id="@+id/songScrollTrack"
+        android:layout_width="2dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="8dp"
+        android:layout_marginEnd="3dp"
+        android:background="@drawable/fastscroll_track"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/rvSongs"
+        app:layout_constraintEnd_toStartOf="@id/songAlphabetIndex"
+        app:layout_constraintTop_toTopOf="@id/rvSongs" />
+
+    <View
+        android:id="@+id/songScrollThumb"
+        android:layout_width="8dp"
+        android:layout_height="56dp"
+        android:background="@drawable/fastscroll_thumb"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@id/songScrollTrack"
+        app:layout_constraintTop_toTopOf="@id/songScrollTrack" />
 
     <com.blazinghotcode.blazingmusic.AlphabetIndexView
         android:id="@+id/songAlphabetIndex"
