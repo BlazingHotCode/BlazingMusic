@@ -46,6 +46,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import android.os.Handler
 import android.os.Looper
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.common.util.concurrent.ListenableFuture
@@ -97,6 +99,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHomeStateMessage: TextView
     private lateinit var btnHomeStateAction: Button
     private lateinit var tvHomeTitle: TextView
+    private lateinit var homeDiscoveryCard: View
+    private lateinit var chipGroupHomeRecentSearches: ChipGroup
+    private lateinit var btnHomeExploreOnline: Button
     private lateinit var songAlphabetIndex: AlphabetIndexView
     private lateinit var songScrollTrack: View
     private lateinit var songScrollThumb: View
@@ -231,6 +236,9 @@ class MainActivity : AppCompatActivity() {
         tvHomeStateMessage = findViewById(R.id.tvHomeStateMessage)
         btnHomeStateAction = findViewById(R.id.btnHomeStateAction)
         tvHomeTitle = findViewById(R.id.tvTitle)
+        homeDiscoveryCard = findViewById(R.id.homeDiscoveryCard)
+        chipGroupHomeRecentSearches = findViewById(R.id.chipGroupHomeRecentSearches)
+        btnHomeExploreOnline = findViewById(R.id.btnHomeExploreOnline)
         songAlphabetIndex = findViewById(R.id.songAlphabetIndex)
         songScrollTrack = findViewById(R.id.songScrollTrack)
         songScrollThumb = findViewById(R.id.songScrollThumb)
@@ -238,10 +246,12 @@ class MainActivity : AppCompatActivity() {
         youtubeContainer = findViewById(R.id.youtubeContainer)
         currentSongSort = loadHomeSort()
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
+        btnHomeExploreOnline.setOnClickListener { openSearchTab() }
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         setupDebugAnalyticsViewer()
+        refreshHomeDiscovery()
         tintSearchStartIcon()
         applySystemInsets()
     }
@@ -1430,6 +1440,7 @@ class MainActivity : AppCompatActivity() {
             viewModel.loadSongs()
         }
         updateHomeLibraryStateUi()
+        refreshHomeDiscovery()
         handler.post(updateSeekbarRunnable)
     }
 
@@ -1507,6 +1518,7 @@ class MainActivity : AppCompatActivity() {
             updateBottomNavSelection(BottomTab.HOME)
             refreshSongAlphabetIndexVisibility()
             updateHomeLibraryStateUi()
+            refreshHomeDiscovery()
             return
         }
         if (youtubeContainer.visibility == View.VISIBLE) {
@@ -1527,18 +1539,37 @@ class MainActivity : AppCompatActivity() {
         }
         currentBottomTab = BottomTab.HOME
         updateBottomNavSelection(BottomTab.HOME)
+        refreshHomeDiscovery()
     }
 
-    fun openSearchTab() {
+    fun refreshHomeDiscovery() {
+        val recentQueries = YouTubeSearchHistoryStore.load(this)
+        chipGroupHomeRecentSearches.removeAllViews()
+        recentQueries.forEach { query ->
+            val chip = Chip(this).apply {
+                text = query
+                isCheckable = false
+                isClickable = true
+                setCheckedIconVisible(false)
+                setEnsureMinTouchTargetSize(false)
+                setOnClickListener { openSearchTab(query) }
+            }
+            chipGroupHomeRecentSearches.addView(chip)
+        }
+        chipGroupHomeRecentSearches.visibility = if (recentQueries.isEmpty()) View.GONE else View.VISIBLE
+        homeDiscoveryCard.visibility = if (currentBottomTab == BottomTab.HOME) View.VISIBLE else View.GONE
+    }
+
+    fun openSearchTab(initialQuery: String? = null) {
         val previousTab = currentBottomTab
-        if (previousTab == BottomTab.SEARCH && youtubeContainer.visibility == View.VISIBLE) {
+        if (previousTab == BottomTab.SEARCH && youtubeContainer.visibility == View.VISIBLE && initialQuery.isNullOrBlank()) {
             if (supportFragmentManager.backStackEntryCount > 0) {
                 supportFragmentManager.popBackStackImmediate(
                     null,
                     androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE
                 )
                 supportFragmentManager.beginTransaction()
-                    .replace(R.id.youtubeContainer, YouTubeSearchFragment())
+                    .replace(R.id.youtubeContainer, YouTubeSearchFragment.newInstance())
                     .commit()
             }
             return
@@ -1552,9 +1583,9 @@ class MainActivity : AppCompatActivity() {
         }
         youtubeContainer.visibility = View.VISIBLE
         val current = supportFragmentManager.findFragmentById(R.id.youtubeContainer)
-        if (current !is YouTubeSearchFragment) {
+        if (current !is YouTubeSearchFragment || !initialQuery.isNullOrBlank()) {
             supportFragmentManager.beginTransaction()
-                .replace(R.id.youtubeContainer, YouTubeSearchFragment())
+                .replace(R.id.youtubeContainer, YouTubeSearchFragment.newInstance(initialQuery))
                 .commit()
         }
         animateContainerIn(youtubeContainer, fromRight = isForwardTabMove(previousTab, BottomTab.SEARCH))
@@ -1562,6 +1593,7 @@ class MainActivity : AppCompatActivity() {
         updateBottomNavSelection(BottomTab.SEARCH)
         refreshSongAlphabetIndexVisibility()
         updateHomeLibraryStateUi()
+        refreshHomeDiscovery()
     }
 
     fun openYouTubeBrowse(item: YouTubeVideo) {

@@ -23,7 +23,7 @@
         android:includeFontPadding="false"
         android:lineSpacingExtra="-2sp"
         android:maxLines="2"
-        android:text="BLAZING&#10;MUSIC"
+        android:text="MUSIC&#10;HOME"
         android:textColor="@color/text_primary"
         android:textSize="32sp"
         android:textStyle="bold"
@@ -52,7 +52,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="22dp"
         android:layout_marginTop="2dp"
-        android:text="Local library"
+        android:text="Local library + YouTube"
         android:textAllCaps="true"
         android:textColor="@color/text_muted"
         android:textSize="11sp"
@@ -98,6 +98,62 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/etSearch" />
 
+    <LinearLayout
+        android:id="@+id/homeDiscoveryCard"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="20dp"
+        android:background="@drawable/bg_song_item"
+        android:orientation="vertical"
+        android:padding="14dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/etSearch">
+
+        <TextView
+            android:id="@+id/tvHomeDiscoveryTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Jump back into YouTube"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvHomeDiscoverySubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Recent searches and quick online discovery"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipGroupHomeRecentSearches"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            app:chipSpacingHorizontal="8dp"
+            app:chipSpacingVertical="8dp" />
+
+        <Button
+            android:id="@+id/btnHomeExploreOnline"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_secondary_action_button"
+            android:minWidth="132dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="Explore online"
+            android:textAllCaps="false"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvSongs"
         android:layout_width="0dp"
@@ -112,7 +168,7 @@
         app:layout_constraintBottom_toTopOf="@id/playerLayout"
         app:layout_constraintEnd_toStartOf="@id/songAlphabetIndex"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/etSearch" />
+        app:layout_constraintTop_toBottomOf="@id/homeDiscoveryCard" />
 
     <View
         android:id="@+id/songScrollTrack"
@@ -161,7 +217,7 @@
         app:layout_constraintBottom_toTopOf="@id/playerLayout"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/etSearch"
+        app:layout_constraintTop_toBottomOf="@id/homeDiscoveryCard"
         tools:visibility="visible">
 
         <TextView

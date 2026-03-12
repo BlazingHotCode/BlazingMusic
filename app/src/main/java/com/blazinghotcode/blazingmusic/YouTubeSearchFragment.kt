@@ -5,10 +5,11 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.text.Layout
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -21,11 +22,14 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -37,8 +41,9 @@ class YouTubeSearchFragment : Fragment() {
     private lateinit var tvTitle: TextView
     private lateinit var etQuery: EditText
     private lateinit var btnSearch: ImageButton
-    private lateinit var tvFilterLabel: TextView
-    private lateinit var btnSearchFilter: Button
+    private lateinit var chipGroupSearchFilters: ChipGroup
+    private lateinit var tvRecentSearchesLabel: TextView
+    private lateinit var chipGroupRecentSearches: ChipGroup
     private lateinit var rvResults: RecyclerView
     private lateinit var tvState: TextView
     private lateinit var browseHeaderContainer: View
@@ -49,6 +54,7 @@ class YouTubeSearchFragment : Fragment() {
 
     private val apiClient by lazy { YouTubeApiClient(requireContext().applicationContext) }
     private var activeJob: Job? = null
+    private var inputJob: Job? = null
     private var selectedFilter: YouTubeSearchFilter = YouTubeSearchFilter.ALL
 
     override fun onCreateView(
@@ -67,15 +73,26 @@ class YouTubeSearchFragment : Fragment() {
         setupList()
         setupActions()
         showState("Search YouTube music sources.")
+        val initialQuery = arguments?.getString(ARG_INITIAL_QUERY).orEmpty().trim()
+        if (initialQuery.isNotEmpty()) {
+            etQuery.setText(initialQuery)
+            etQuery.setSelection(initialQuery.length)
+            runSearch(triggeredByUser = true)
+        }
     }
 
     override fun onDestroyView() {
         activeJob?.cancel()
+        inputJob?.cancel()
         super.onDestroyView()
     }
 
     fun handleBackNavigation(): Boolean {
-        return false
+        val hasQuery = etQuery.text?.toString().orEmpty().isNotBlank()
+        val hasResults = adapter.itemCount > 0
+        if (!hasQuery && !hasResults) return false
+        clearSearchSurface()
+        return true
     }
 
     private fun bindViews(view: View) {
@@ -83,8 +100,9 @@ class YouTubeSearchFragment : Fragment() {
         tvTitle = view.findViewById(R.id.tvTitle)
         etQuery = view.findViewById(R.id.etYouTubeSearch)
         btnSearch = view.findViewById(R.id.btnRunYouTubeSearch)
-        tvFilterLabel = view.findViewById(R.id.tvSongsOnlyLabel)
-        btnSearchFilter = view.findViewById(R.id.btnSearchFilter)
+        chipGroupSearchFilters = view.findViewById(R.id.chipGroupSearchFilters)
+        tvRecentSearchesLabel = view.findViewById(R.id.tvRecentSearchesLabel)
+        chipGroupRecentSearches = view.findViewById(R.id.chipGroupRecentSearches)
         rvResults = view.findViewById(R.id.rvYouTubeResults)
         tvState = view.findViewById(R.id.tvYouTubeState)
         browseHeaderContainer = view.findViewById(R.id.browseHeaderContainer)
@@ -92,7 +110,8 @@ class YouTubeSearchFragment : Fragment() {
         tvBrowseHeaderTitle = view.findViewById(R.id.tvBrowseHeaderTitle)
         tvBrowseHeaderSubtitle = view.findViewById(R.id.tvBrowseHeaderSubtitle)
         applyHeaderTitleSizing(tvTitle)
-        updateFilterButtonText()
+        bindFilterChips()
+        bindRecentSearchChips()
         updateBrowseUiState()
     }
 
@@ -136,22 +155,43 @@ class YouTubeSearchFragment : Fragment() {
                 (activity as? MainActivity)?.openHomeTab()
             }
         }
-        btnSearch.setOnClickListener { runSearch() }
-        btnSearchFilter.setOnClickListener { showFilterMenu() }
+        btnSearch.setOnClickListener { runSearch(triggeredByUser = true) }
         etQuery.setOnEditorActionListener { _, _, _ ->
-            runSearch()
+            runSearch(triggeredByUser = true)
             true
+        }
+        etQuery.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                scheduleReactiveSearch()
+            }
+        })
+        etQuery.requestFocus()
+    }
+
+    private fun scheduleReactiveSearch() {
+        inputJob?.cancel()
+        val query = etQuery.text?.toString().orEmpty().trim()
+        if (query.isEmpty()) {
+            clearSearchSurface(preserveQuery = false)
+            return
+        }
+        inputJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(260L)
+            runSearch(triggeredByUser = false)
         }
     }
 
-    private fun runSearch() {
+    private fun runSearch(triggeredByUser: Boolean) {
         val query = etQuery.text?.toString().orEmpty().trim()
         if (query.isEmpty()) {
-            showState("Type a song/artist to search.")
+            clearSearchSurface(preserveQuery = false)
             return
         }
 
         updateBrowseUiState()
+        inputJob?.cancel()
         activeJob?.cancel()
         activeJob = viewLifecycleOwner.lifecycleScope.launch {
             showState("Searching...")
@@ -161,31 +201,87 @@ class YouTubeSearchFragment : Fragment() {
                 emptyList()
             }
             adapter.submitList(results)
+            YouTubeSearchHistoryStore.save(requireContext(), query)
+            bindRecentSearchChips()
+            (activity as? MainActivity)?.refreshHomeDiscovery()
             if (results.isEmpty()) {
                 showState("No results found.")
             } else {
-                showState("Showing ${selectedFilter.displayName.lowercase()} results.")
+                val prefix = if (triggeredByUser) "Showing" else "Updated"
+                showState("$prefix ${selectedFilter.displayName.lowercase()} results.")
             }
+            updateRecentSearchVisibility(query)
         }
     }
 
-    private fun showFilterMenu() {
-        val popup = PopupMenu(requireContext(), btnSearchFilter)
-        YouTubeSearchFilter.entries.forEachIndexed { index, filter ->
-            popup.menu.add(0, index, index, filter.displayName)
+    private fun bindFilterChips() {
+        chipGroupSearchFilters.removeAllViews()
+        YouTubeSearchFilter.entries.forEach { filter ->
+            val chip = buildChip(filter.displayName, isCheckable = true)
+            chip.isChecked = filter == selectedFilter
+            chip.setOnClickListener {
+                if (selectedFilter == filter) return@setOnClickListener
+                selectedFilter = filter
+                refreshFilterChipChecks()
+                if (etQuery.text?.toString().orEmpty().trim().isNotEmpty()) {
+                    runSearch(triggeredByUser = false)
+                } else {
+                    showState("Filter: ${selectedFilter.displayName}")
+                }
+            }
+            chipGroupSearchFilters.addView(chip)
         }
-        popup.setOnMenuItemClickListener { item ->
-            val chosen = YouTubeSearchFilter.entries.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
-            selectedFilter = chosen
-            updateFilterButtonText()
-            showState("Filter: ${selectedFilter.displayName}")
-            true
-        }
-        popup.show()
     }
 
-    private fun updateFilterButtonText() {
-        btnSearchFilter.text = selectedFilter.displayName
+    private fun bindRecentSearchChips() {
+        val context = context ?: return
+        val recentQueries = YouTubeSearchHistoryStore.load(context)
+        chipGroupRecentSearches.removeAllViews()
+        recentQueries.forEach { query ->
+            val chip = buildChip(query, isCheckable = false)
+            chip.setOnClickListener {
+                etQuery.setText(query)
+                etQuery.setSelection(query.length)
+                runSearch(triggeredByUser = true)
+            }
+            chipGroupRecentSearches.addView(chip)
+        }
+        updateRecentSearchVisibility(etQuery.text?.toString().orEmpty())
+    }
+
+    private fun refreshFilterChipChecks() {
+        for (index in 0 until chipGroupSearchFilters.childCount) {
+            val chip = chipGroupSearchFilters.getChildAt(index) as? Chip ?: continue
+            chip.isChecked = chip.text.toString() == selectedFilter.displayName
+        }
+    }
+
+    private fun updateRecentSearchVisibility(query: String) {
+        val show = query.trim().isBlank() && chipGroupRecentSearches.childCount > 0
+        tvRecentSearchesLabel.visibility = if (show) View.VISIBLE else View.GONE
+        chipGroupRecentSearches.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    private fun buildChip(label: String, isCheckable: Boolean): Chip {
+        return Chip(requireContext()).apply {
+            text = label
+            this.isCheckable = isCheckable
+            isClickable = true
+            setCheckedIconVisible(false)
+            setEnsureMinTouchTargetSize(false)
+        }
+    }
+
+    private fun clearSearchSurface(preserveQuery: Boolean = false) {
+        inputJob?.cancel()
+        activeJob?.cancel()
+        if (!preserveQuery) {
+            etQuery.text?.clear()
+        }
+        adapter.submitList(emptyList())
+        updateBrowseUiState()
+        bindRecentSearchChips()
+        showState("Search YouTube music sources.")
     }
 
     private fun onItemClicked(item: YouTubeVideo) {
@@ -245,9 +341,9 @@ class YouTubeSearchFragment : Fragment() {
     private fun updateBrowseUiState() {
         etQuery.visibility = View.VISIBLE
         btnSearch.visibility = View.VISIBLE
-        tvFilterLabel.visibility = View.VISIBLE
-        btnSearchFilter.visibility = View.VISIBLE
+        chipGroupSearchFilters.visibility = View.VISIBLE
         browseHeaderContainer.visibility = View.GONE
+        updateRecentSearchVisibility(etQuery.text?.toString().orEmpty())
     }
 
     private fun playInApp(item: YouTubeVideo) {
@@ -461,7 +557,8 @@ class YouTubeSearchFragment : Fragment() {
         return (value * density).toInt()
     }
 
-    private companion object {
+    companion object {
+        private const val ARG_INITIAL_QUERY = "initial_query"
         private const val MENU_PLAY_NOW = 1
         private const val MENU_PLAY_NEXT = 2
         private const val MENU_ADD_QUEUE = 3
@@ -472,6 +569,14 @@ class YouTubeSearchFragment : Fragment() {
         private const val RADIO_CANDIDATE_LIMIT = 60
         private const val RADIO_RESOLVE_PARALLELISM = 6
         private const val RADIO_RESOLVE_TIMEOUT_MS = 6000L
+
+        fun newInstance(initialQuery: String? = null): YouTubeSearchFragment {
+            return YouTubeSearchFragment().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_INITIAL_QUERY, initialQuery)
+                }
+            }
+        }
     }
 
 }

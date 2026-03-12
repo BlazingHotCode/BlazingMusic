@@ -78,31 +78,54 @@
         app:layout_constraintTop_toTopOf="@id/etYouTubeSearch"
         app:tint="@color/text_primary" />
 
+    <HorizontalScrollView
+        android:id="@+id/filterScroll"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:scrollbars="none"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/etYouTubeSearch">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipGroupSearchFilters"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            app:chipSpacingHorizontal="8dp"
+            app:singleLine="true"
+            app:singleSelection="true" />
+    </HorizontalScrollView>
+
     <TextView
-        android:id="@+id/tvSongsOnlyLabel"
+        android:id="@+id/tvRecentSearchesLabel"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="18dp"
         android:layout_marginTop="10dp"
-        android:layout_marginEnd="12dp"
-        android:text="Result type"
+        android:layout_marginEnd="18dp"
+        android:text="Recent searches"
         android:textColor="@color/text_primary"
         android:textSize="13sp"
         android:textStyle="bold"
-        app:layout_constraintEnd_toStartOf="@id/btnSearchFilter"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/etYouTubeSearch" />
-
-    <Button
-        android:id="@+id/btnSearchFilter"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="16dp"
-        android:text="@string/youtube_search_default_filter_display_name"
-        android:textAllCaps="false"
-        app:layout_constraintBottom_toBottomOf="@id/tvSongsOnlyLabel"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="@id/tvSongsOnlyLabel" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/filterScroll" />
+
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/chipGroupRecentSearches"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="16dp"
+        app:chipSpacingHorizontal="8dp"
+        app:chipSpacingVertical="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvRecentSearchesLabel" />
 
     <TextView
         android:id="@+id/tvYouTubeState"
@@ -115,7 +138,7 @@
         android:textSize="12sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tvSongsOnlyLabel" />
+        app:layout_constraintTop_toBottomOf="@id/chipGroupRecentSearches" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/browseHeaderContainer"

@@ -3,7 +3,6 @@ package com.blazinghotcode.blazingmusic
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -17,6 +16,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.transform.RoundedCornersTransformation
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -27,10 +28,9 @@ class YouTubeSearchActivity : AppCompatActivity() {
     private lateinit var btnBack: ImageButton
     private lateinit var etQuery: EditText
     private lateinit var btnSearch: ImageButton
-    private lateinit var tvFilterLabel: TextView
-    private lateinit var btnSearchFilter: Button
+    private lateinit var chipGroupSearchFilters: ChipGroup
     private lateinit var rvResults: RecyclerView
-    private lateinit var tvState: TextView
+    private lateinit var tvState: android.widget.TextView
     private lateinit var browseHeaderContainer: View
     private lateinit var ivBrowseHeaderArt: ImageView
     private lateinit var tvBrowseHeaderTitle: TextView
@@ -68,15 +68,14 @@ class YouTubeSearchActivity : AppCompatActivity() {
         btnBack = findViewById(R.id.btnBack)
         etQuery = findViewById(R.id.etYouTubeSearch)
         btnSearch = findViewById(R.id.btnRunYouTubeSearch)
-        tvFilterLabel = findViewById(R.id.tvSongsOnlyLabel)
-        btnSearchFilter = findViewById(R.id.btnSearchFilter)
+        chipGroupSearchFilters = findViewById(R.id.chipGroupSearchFilters)
         rvResults = findViewById(R.id.rvYouTubeResults)
         tvState = findViewById(R.id.tvYouTubeState)
         browseHeaderContainer = findViewById(R.id.browseHeaderContainer)
         ivBrowseHeaderArt = findViewById(R.id.ivBrowseHeaderArt)
         tvBrowseHeaderTitle = findViewById(R.id.tvBrowseHeaderTitle)
         tvBrowseHeaderSubtitle = findViewById(R.id.tvBrowseHeaderSubtitle)
-        btnSearchFilter.text = selectedFilter.displayName
+        bindFilterChips()
         updateBrowseUiState()
     }
 
@@ -96,7 +95,6 @@ class YouTubeSearchActivity : AppCompatActivity() {
             }
         }
         btnSearch.setOnClickListener { runSearch() }
-        btnSearchFilter.setOnClickListener { showFilterMenu() }
         etQuery.setOnEditorActionListener { _, _, _ ->
             runSearch()
             true
@@ -131,20 +129,36 @@ class YouTubeSearchActivity : AppCompatActivity() {
         }
     }
 
-    private fun showFilterMenu() {
-        if (browseStack.isNotEmpty()) return
-        val popup = PopupMenu(this, btnSearchFilter)
-        YouTubeSearchFilter.entries.forEachIndexed { index, filter ->
-            popup.menu.add(0, index, index, filter.displayName)
+    private fun bindFilterChips() {
+        chipGroupSearchFilters.removeAllViews()
+        YouTubeSearchFilter.entries.forEach { filter ->
+            val chip = Chip(this).apply {
+                text = filter.displayName
+                isCheckable = true
+                isClickable = true
+                setCheckedIconVisible(false)
+                setEnsureMinTouchTargetSize(false)
+                isChecked = filter == selectedFilter
+                setOnClickListener {
+                    if (browseStack.isNotEmpty() || selectedFilter == filter) return@setOnClickListener
+                    selectedFilter = filter
+                    refreshFilterChipChecks()
+                    if (lastQuery.isNotBlank()) {
+                        runSearch()
+                    } else {
+                        showState("Filter: ${selectedFilter.displayName}")
+                    }
+                }
+            }
+            chipGroupSearchFilters.addView(chip)
         }
-        popup.setOnMenuItemClickListener { item ->
-            val chosen = YouTubeSearchFilter.entries.getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
-            selectedFilter = chosen
-            btnSearchFilter.text = selectedFilter.displayName
-            showState("Filter: ${selectedFilter.displayName}")
-            true
+    }
+
+    private fun refreshFilterChipChecks() {
+        for (index in 0 until chipGroupSearchFilters.childCount) {
+            val chip = chipGroupSearchFilters.getChildAt(index) as? Chip ?: continue
+            chip.isChecked = chip.text.toString() == selectedFilter.displayName
         }
-        popup.show()
     }
 
     private fun onItemClicked(item: YouTubeVideo) {
@@ -223,8 +237,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
         val inBrowseMode = current != null
         etQuery.visibility = if (inBrowseMode) View.GONE else View.VISIBLE
         btnSearch.visibility = if (inBrowseMode) View.GONE else View.VISIBLE
-        tvFilterLabel.visibility = if (inBrowseMode) View.GONE else View.VISIBLE
-        btnSearchFilter.visibility = if (inBrowseMode) View.GONE else View.VISIBLE
+        chipGroupSearchFilters.visibility = if (inBrowseMode) View.GONE else View.VISIBLE
         browseHeaderContainer.visibility = if (inBrowseMode) View.VISIBLE else View.GONE
 
         if (current != null) {
