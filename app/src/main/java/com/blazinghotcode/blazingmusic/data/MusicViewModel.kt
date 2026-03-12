@@ -453,9 +453,36 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addSongsToQueue(songs: List<Song>) {
         if (songs.isEmpty()) return
+        if (activeQueue.isEmpty()) {
+            applyQueueMutation(songs.toMutableList(), updatedCurrentIndex = -1)
+            return
+        }
+
+        val additions = songs.toList()
         val mutableQueue = activeQueue.toMutableList()
-        mutableQueue.addAll(songs)
-        applyQueueMutation(mutableQueue)
+        mutableQueue.addAll(additions)
+        activeQueue = mutableQueue.toList()
+        _queue.value = activeQueue
+
+        if (_isShuffleEnabled.value != true) {
+            normalQueue = activeQueue
+        } else {
+            val queueSongIds = activeQueue.map { it.id }.toSet()
+            normalQueue = normalQueue.filter { it.id in queueSongIds }
+        }
+
+        persistQueueState()
+
+        val player = exoPlayer
+        if (player != null) {
+            val mediaItems = additions.map { mediaItemForSong(it) }
+            if (mediaItems.isNotEmpty()) {
+                player.addMediaItems(mediaItems)
+                if (player.playbackState == Player.STATE_IDLE) {
+                    player.prepare()
+                }
+            }
+        }
     }
 
     fun addSongToPlayNext(song: Song) {
