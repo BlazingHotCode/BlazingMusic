@@ -115,12 +115,16 @@ class YouTubeSearchActivity : AppCompatActivity() {
         activeJob = lifecycleScope.launch {
             showState("Searching...")
             val results = runCatching {
-                apiClient.searchMusicVideos(query, filter = selectedFilter)
+                apiClient.searchMusicVideos(
+                    query,
+                    maxResults = if (selectedFilter == YouTubeSearchFilter.ALL) 36 else 28,
+                    filter = selectedFilter
+                )
             }.getOrElse {
                 emptyList()
             }
             lastSearchResults = results
-            adapter.submitList(results)
+            adapter.submitResults(results, grouped = selectedFilter == YouTubeSearchFilter.ALL)
             if (results.isEmpty()) {
                 showState("No results found.")
             } else {
@@ -223,7 +227,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
             }.getOrElse {
                 emptyList()
             }
-            adapter.submitList(results)
+            adapter.submitResults(results, grouped = true)
             if (results.isEmpty()) {
                 showState("No items found in ${request.title}.")
             } else {
@@ -296,7 +300,7 @@ class YouTubeSearchActivity : AppCompatActivity() {
         if (browseStack.isEmpty()) return false
         browseStack.removeLastOrNull()
         if (browseStack.isEmpty()) {
-            adapter.submitList(lastSearchResults)
+            adapter.submitResults(lastSearchResults, grouped = selectedFilter == YouTubeSearchFilter.ALL)
             showState("Back to search results for \"$lastQuery\".")
             updateBrowseUiState()
         } else {

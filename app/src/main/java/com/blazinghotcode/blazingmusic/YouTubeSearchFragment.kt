@@ -196,11 +196,15 @@ class YouTubeSearchFragment : Fragment() {
         activeJob = viewLifecycleOwner.lifecycleScope.launch {
             showState("Searching...")
             val results = runCatching {
-                apiClient.searchMusicVideos(query, filter = selectedFilter)
+                apiClient.searchMusicVideos(
+                    query,
+                    maxResults = if (selectedFilter == YouTubeSearchFilter.ALL) 36 else 28,
+                    filter = selectedFilter
+                )
             }.getOrElse {
                 emptyList()
             }
-            adapter.submitList(results)
+            adapter.submitResults(results, grouped = selectedFilter == YouTubeSearchFilter.ALL)
             YouTubeSearchHistoryStore.save(requireContext(), query)
             bindRecentSearchChips()
             (activity as? MainActivity)?.refreshHomeDiscovery()
@@ -278,7 +282,7 @@ class YouTubeSearchFragment : Fragment() {
         if (!preserveQuery) {
             etQuery.text?.clear()
         }
-        adapter.submitList(emptyList())
+        adapter.clear()
         updateBrowseUiState()
         bindRecentSearchChips()
         showState("Search YouTube music sources.")

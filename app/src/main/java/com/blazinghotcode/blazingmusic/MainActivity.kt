@@ -44,6 +44,7 @@ import androidx.media3.session.SessionToken
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.lifecycle.lifecycleScope
 import android.os.Handler
 import android.os.Looper
 import com.google.android.material.chip.Chip
@@ -52,6 +53,8 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /**
  * Main app shell that hosts Home + Playlists sections, mini-player controls,
@@ -68,10 +71,18 @@ class MainActivity : AppCompatActivity() {
         private const val APP_PREFS_NAME = "blazing_music_app_prefs"
         private const val KEY_AUDIO_PERMISSION_REQUESTED = "audio_permission_requested"
         private const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
+        private const val HOME_BROWSE_ID = "FEmusic_home"
+        private const val HOME_MAX_RESULTS = 160
+        private const val MENU_PLAY_NOW = 2001
+        private const val MENU_PLAY_NEXT = 2002
+        private const val MENU_ADD_QUEUE = 2003
+        private const val MENU_OPEN_PAGE = 2004
     }
 
     private val viewModel: MusicViewModel by viewModels()
+    private val youTubeApiClient by lazy { YouTubeApiClient(applicationContext) }
     private lateinit var songAdapter: SongAdapter
+    private lateinit var homeFeedAdapter: YouTubeBrowseAdapter
 
     private lateinit var rvSongs: RecyclerView
     private lateinit var playerLayout: View
@@ -122,6 +133,10 @@ class MainActivity : AppCompatActivity() {
     private var currentBottomTab: BottomTab = BottomTab.HOME
     private var hasAudioPermission = false
     private var hasNotificationPermission = true
+    private var homeFeedJob: Job? = null
+    private var homeFeedItems: List<YouTubeVideo> = emptyList()
+    private var homeFeedErrorMessage: String? = null
+    private var isHomeFeedLoading = false
     private val sortPrefs by lazy {
         getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -297,9 +312,34 @@ class MainActivity : AppCompatActivity() {
                 updateHomeSelectionUi(isSelectionMode, selectedCount)
             }
         )
+        homeFeedAdapter = YouTubeBrowseAdapter(
+            onItemClick = { item -> onHomeFeedItemClicked(item) },
+            onItemMenuClick = { item, anchor -> showHomeFeedItemMenu(item, anchor) },
+            onPlayAllClick = { _ -> },
+            onStartRadioClick = { },
+            onArtistOptionsClick = { },
+            onSectionSeeAllClick = { sectionTitle, browseId, browseParams ->
+                openYouTubeBrowse(
+                    YouTubeVideo(
+                        id = "home_section_$browseId",
+                        title = sectionTitle,
+                        channelTitle = "",
+                        thumbnailUrl = null,
+                        browseId = browseId,
+                        browseParams = browseParams,
+                        type = when {
+                            sectionTitle.contains("album", ignoreCase = true) -> YouTubeItemType.ALBUM
+                            sectionTitle.contains("artist", ignoreCase = true) -> YouTubeItemType.ARTIST
+                            sectionTitle.contains("playlist", ignoreCase = true) -> YouTubeItemType.PLAYLIST
+                            else -> YouTubeItemType.SONG
+                        }
+                    )
+                )
+            }
+        )
         rvSongs.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = songAdapter
+            adapter = homeFeedAdapter
         }
         setupSongScrollThumb()
         songAlphabetIndex.setOnSectionSelectedListener { section ->
@@ -1204,16 +1244,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshSongAlphabetIndexVisibility() {
-        val isOnHomeTab = currentBottomTab == BottomTab.HOME
-        val hasSongs = songAdapter.currentList.isNotEmpty()
-        val shouldShow = isOnHomeTab && hasSongs && supportsAlphabetIndexForCurrentSort()
-        songAlphabetIndex.visibility = if (shouldShow) View.VISIBLE else View.GONE
-        val showScroll = isOnHomeTab && hasSongs
-        songScrollTrack.visibility = if (showScroll) View.VISIBLE else View.GONE
-        songScrollThumb.visibility = if (showScroll) View.VISIBLE else View.GONE
-        if (showScroll) {
-            rvSongs.post { updateSongScrollThumbPosition() }
-        }
+        songAlphabetIndex.visibility = View.GONE
+        songScrollTrack.visibility = View.GONE
+        songScrollThumb.visibility = View.GONE
     }
 
     private fun updateHomeLibraryStateUi() {
@@ -1229,51 +1262,45 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (!hasAudioPermission) {
-            showHomeState(
-                title = "Storage permission needed",
-                message = "Allow audio access to load songs from your device library.",
-                actionLabel = "Grant permission"
-            )
+        etSearch.visibility = View.GONE
+        btnSortSongs.visibility = View.GONE
+        songAlphabetIndex.visibility = View.GONE
+        songScrollTrack.visibility = View.GONE
+        songScrollThumb.visibility = View.GONE
+
+        if (homeFeedItems.isNotEmpty()) {
+            homeStateContainer.visibility = View.GONE
+            rvSongs.visibility = View.VISIBLE
+            homeFeedAdapter.submit(homeFeedItems)
+            refreshHomeDiscovery()
             return
         }
-        if (!hasNotificationPermission) {
+
+        if (isHomeFeedLoading) {
             showHomeState(
-                title = "Notification permission needed",
-                message = "Allow notifications to use playback controls and continue.",
-                actionLabel = "Grant permission"
+                title = "Loading home",
+                message = "Fetching your YouTube Music shelves...",
+                actionLabel = "Refresh"
             )
             return
         }
 
-        when (val state = viewModel.libraryLoadState.value ?: LibraryLoadState.Loading) {
-            LibraryLoadState.Loading -> {
-                showHomeState(
-                    title = "Loading songs",
-                    message = "Scanning your local library...",
-                    actionLabel = "Retry"
-                )
-            }
-            LibraryLoadState.Content -> {
-                homeStateContainer.visibility = View.GONE
-                rvSongs.visibility = View.VISIBLE
-                etSearch.visibility = View.VISIBLE
-                btnSortSongs.visibility = View.VISIBLE
-            }
-            LibraryLoadState.Empty -> {
-                showHomeState(
-                    title = "No songs found",
-                    message = "No local audio files are available right now.",
-                    actionLabel = "Scan again"
-                )
-            }
-            is LibraryLoadState.Error -> {
-                showHomeState(
-                    title = "Could not load songs",
-                    message = state.message,
-                    actionLabel = "Retry"
-                )
-            }
+        if (!homeFeedErrorMessage.isNullOrBlank()) {
+            showHomeState(
+                title = "Could not load home",
+                message = homeFeedErrorMessage!!,
+                actionLabel = "Retry"
+            )
+            return
+        }
+
+        showHomeState(
+            title = "Welcome back",
+            message = "Tap refresh to load a Metrolist-style online home feed.",
+            actionLabel = "Refresh"
+        )
+        if (!isHomeFeedLoading) {
+            refreshHomeFeed(forceRefresh = false)
         }
     }
 
@@ -1291,15 +1318,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onHomeStateActionClicked() {
-        if (!hasAudioPermission) {
-            requestAudioPermissionFromState()
-            return
-        }
-        if (!hasNotificationPermission) {
-            requestNotificationPermissionFromState()
-            return
-        }
-        viewModel.loadSongs()
+        refreshHomeFeed(forceRefresh = true)
     }
 
     private fun requestAudioPermissionFromState() {
@@ -1558,6 +1577,134 @@ class MainActivity : AppCompatActivity() {
         }
         chipGroupHomeRecentSearches.visibility = if (recentQueries.isEmpty()) View.GONE else View.VISIBLE
         homeDiscoveryCard.visibility = if (currentBottomTab == BottomTab.HOME) View.VISIBLE else View.GONE
+    }
+
+    private fun refreshHomeFeed(forceRefresh: Boolean) {
+        if (!forceRefresh && (isHomeFeedLoading || homeFeedItems.isNotEmpty())) {
+            updateHomeLibraryStateUi()
+            return
+        }
+        homeFeedJob?.cancel()
+        isHomeFeedLoading = true
+        homeFeedErrorMessage = null
+        if (forceRefresh) {
+            homeFeedItems = emptyList()
+        }
+        updateHomeLibraryStateUi()
+        homeFeedJob = lifecycleScope.launch {
+            val result = runCatching {
+                youTubeApiClient.browseCollection(
+                    browseId = HOME_BROWSE_ID,
+                    maxResults = HOME_MAX_RESULTS
+                )
+            }
+            isHomeFeedLoading = false
+            homeFeedItems = result.getOrDefault(emptyList())
+                .filterNot { it.title.isBlank() }
+            homeFeedErrorMessage = if (homeFeedItems.isEmpty()) {
+                result.exceptionOrNull()?.message ?: "No home sections are available right now."
+            } else {
+                null
+            }
+            updateHomeLibraryStateUi()
+        }
+    }
+
+    private fun onHomeFeedItemClicked(item: YouTubeVideo) {
+        when {
+            !item.videoId.isNullOrBlank() -> playHomeFeedItem(item)
+            !item.browseId.isNullOrBlank() -> openYouTubeBrowse(item)
+            else -> showToast("This item cannot be opened yet")
+        }
+    }
+
+    private fun showHomeFeedItemMenu(item: YouTubeVideo, anchor: View) {
+        val popup = PopupMenu(ContextThemeWrapper(this, R.style.ThemeOverlay_BlazingMusic_PopupMenu), anchor)
+        when (item.type) {
+            YouTubeItemType.SONG -> {
+                popup.menu.add(0, MENU_PLAY_NOW, 0, "Play now")
+                popup.menu.add(0, MENU_PLAY_NEXT, 1, "Play next")
+                popup.menu.add(0, MENU_ADD_QUEUE, 2, "Add to queue")
+            }
+            YouTubeItemType.ALBUM, YouTubeItemType.ARTIST, YouTubeItemType.PLAYLIST -> {
+                popup.menu.add(0, MENU_OPEN_PAGE, 0, "Open")
+            }
+            else -> return
+        }
+        popup.setOnMenuItemClickListener { menu ->
+            when (menu.itemId) {
+                MENU_PLAY_NOW -> {
+                    playHomeFeedItem(item)
+                    true
+                }
+                MENU_PLAY_NEXT -> {
+                    queueHomeFeedItem(item, playNext = true)
+                    true
+                }
+                MENU_ADD_QUEUE -> {
+                    queueHomeFeedItem(item, playNext = false)
+                    true
+                }
+                MENU_OPEN_PAGE -> {
+                    if (!item.browseId.isNullOrBlank()) openYouTubeBrowse(item)
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+
+    private fun playHomeFeedItem(item: YouTubeVideo) {
+        val videoId = item.videoId ?: return
+        lifecycleScope.launch {
+            showToast("Resolving ${item.title}")
+            val streamUrl = runCatching { youTubeApiClient.resolveAudioStreamUrl(videoId) }.getOrNull()
+            if (streamUrl.isNullOrBlank()) {
+                showToast("Could not start playback")
+                return@launch
+            }
+            val playableSong = item.toSong(streamUrl)
+            playTemporaryQueue(listOf(playableSong), 0)
+        }
+    }
+
+    private fun queueHomeFeedItem(item: YouTubeVideo, playNext: Boolean) {
+        val videoId = item.videoId ?: return
+        lifecycleScope.launch {
+            val streamUrl = runCatching { youTubeApiClient.resolveAudioStreamUrl(videoId) }.getOrNull()
+            if (streamUrl.isNullOrBlank()) {
+                showToast("Could not resolve this song")
+                return@launch
+            }
+            val song = item.toSong(streamUrl)
+            if (playNext) {
+                addSongToPlayNext(song)
+                showToast("Added to play next")
+            } else {
+                addSongToCurrentQueue(song)
+                showToast("Added to queue")
+            }
+        }
+    }
+
+    private fun YouTubeVideo.toSong(streamUrl: String): Song {
+        val stableId = (id.hashCode().toLong() and 0x7fffffffL) + 10_000_000_000L
+        return Song(
+            id = stableId,
+            title = title,
+            artist = channelTitle.ifBlank { "YouTube Music" },
+            album = sectionTitle ?: "YouTube",
+            duration = 0L,
+            dateAddedSeconds = System.currentTimeMillis() / 1000,
+            path = streamUrl,
+            albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(thumbnailUrl, videoId),
+            sourceVideoId = videoId,
+            sourcePlaylistId = sourcePlaylistId,
+            sourcePlaylistSetVideoId = sourcePlaylistSetVideoId,
+            sourceParams = sourceParams,
+            sourceIndex = sourceIndex
+        )
     }
 
     fun openSearchTab(initialQuery: String? = null) {

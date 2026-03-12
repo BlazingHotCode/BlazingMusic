@@ -52,7 +52,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="22dp"
         android:layout_marginTop="2dp"
-        android:text="Local library + YouTube"
+        android:text="Quick picks + discovery"
         android:textAllCaps="true"
         android:textColor="@color/text_muted"
         android:textSize="11sp"
@@ -116,7 +116,7 @@
             android:id="@+id/tvHomeDiscoveryTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Jump back into YouTube"
+            android:text="Quick picks"
             android:textColor="@color/text_primary"
             android:textSize="16sp"
             android:textStyle="bold" />
@@ -126,7 +126,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Recent searches and quick online discovery"
+            android:text="Recent searches and online shelves inspired by Metrolist"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
@@ -147,7 +147,7 @@
             android:minWidth="132dp"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="Explore online"
+            android:text="Open search"
             android:textAllCaps="false"
             android:textColor="@color/text_primary"
             android:textStyle="bold" />
