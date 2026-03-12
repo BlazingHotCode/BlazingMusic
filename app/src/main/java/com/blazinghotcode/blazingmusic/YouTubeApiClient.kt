@@ -660,13 +660,18 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         clientId: String,
         userAgent: String
     ): String? {
+        val signatureTimestamp = getSignatureTimestampOrNull(videoId)
         val body = JSONObject()
             .put("context", context)
             .put("videoId", videoId)
             .put(
                 "playbackContext", JSONObject().put(
                     "contentPlaybackContext",
-                    JSONObject().put("html5Preference", "HTML5_PREF_WANTS")
+                    JSONObject()
+                        .put("html5Preference", "HTML5_PREF_WANTS")
+                        .apply {
+                            signatureTimestamp?.let { put("signatureTimestamp", it) }
+                        }
                 )
             )
             .put("racyCheckOk", true)
@@ -697,7 +702,10 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             ?: return null
 
         val directUrl = chosen.optString("url", "").trim()
-        if (directUrl.isNotEmpty()) return directUrl
+        if (directUrl.isNotEmpty()) {
+            val playableUrl = deobfuscateThrottleUrl(videoId, directUrl) ?: directUrl
+            return playableUrl
+        }
 
         val cipher = chosen.optString("signatureCipher", "").trim()
         if (cipher.isNotEmpty()) {
@@ -714,7 +722,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                         signature = s
                     )
                 } else {
-                    cipherUrl
+                    deobfuscateThrottleUrl(videoId, cipherUrl) ?: cipherUrl
                 }
 
                 if (!candidate.isNullOrBlank() && looksLikeDirectPlayableAudioUrl(candidate)) {
@@ -1335,7 +1343,21 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             val decipheredSignature = YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, signature)
             val separator = if (baseUrl.contains("?")) '&' else '?'
             val withSignature = "$baseUrl$separator${URLEncoder.encode(sp, "UTF-8")}=${URLEncoder.encode(decipheredSignature, "UTF-8")}"
-            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, withSignature)
+            deobfuscateThrottleUrl(videoId, withSignature) ?: withSignature
+        }.getOrNull()
+    }
+
+    private fun deobfuscateThrottleUrl(videoId: String, url: String): String? {
+        return runCatching {
+            YouTubeStreamResolver.ensureInitializedForCipher()
+            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, url)
+        }.getOrNull()
+    }
+
+    private fun getSignatureTimestampOrNull(videoId: String): Int? {
+        return runCatching {
+            YouTubeStreamResolver.ensureInitializedForCipher()
+            YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId)
         }.getOrNull()
     }
 
