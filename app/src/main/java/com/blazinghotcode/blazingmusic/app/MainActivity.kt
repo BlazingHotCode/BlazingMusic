@@ -63,6 +63,12 @@ import kotlinx.coroutines.launch
  * queue bottom sheet, permission flow, and service/controller wiring.
  */
 class MainActivity : AppCompatActivity() {
+    private data class PlaylistAddTarget(
+        val title: String,
+        val playlist: Playlist,
+        val isRemote: Boolean
+    )
+
     private enum class BottomTab { HOME, SEARCH, PLAYLISTS }
 
     companion object {
@@ -919,22 +925,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAddMultipleSongsToPlaylistDialog(selectedSongs: List<Song>) {
-        val editablePlaylists = playlists.filter { it.isEditablePlaylist() }
-        if (editablePlaylists.isEmpty()) {
+        val targets = buildPlaylistAddTargets(selectedSongs)
+        if (targets.isEmpty()) {
             showToast("No playlists yet")
             return
         }
         showSimpleBottomSheet(
             title = "Add ${selectedSongs.size} songs to playlist",
-            items = editablePlaylists.map { it.name }
+            items = targets.map { it.title }
         ) { index ->
-            val playlist = editablePlaylists.getOrNull(index) ?: return@showSimpleBottomSheet
-            val addedCount = viewModel.addSongsToPlaylist(playlist.id, selectedSongs)
-            if (addedCount > 0) {
-                showToast("Added $addedCount songs to ${playlist.name}")
-            } else {
-                showToast("No new songs added")
+            val target = targets.getOrNull(index) ?: return@showSimpleBottomSheet
+            if (!target.isRemote) {
+                val addedCount = viewModel.addSongsToPlaylist(target.playlist.id, selectedSongs)
+                if (addedCount > 0) {
+                    showToast("Added $addedCount songs to ${target.playlist.name}")
+                } else {
+                    showToast("No new songs added")
+                }
+                return@showSimpleBottomSheet
             }
+
+            addSongsToRemotePlaylist(target.playlist, selectedSongs)
         }
     }
 
@@ -1113,8 +1124,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAddSongToPlaylistDialog(song: Song) {
-        val editablePlaylists = playlists.filter { it.isEditablePlaylist() }
-        if (editablePlaylists.isEmpty()) {
+        val targets = buildPlaylistAddTargets(listOf(song))
+        if (targets.isEmpty()) {
             dialogBuilder()
                 .setTitle("Add to playlist")
                 .setMessage("No playlists yet.")
@@ -1128,16 +1139,66 @@ class MainActivity : AppCompatActivity() {
 
         showSimpleBottomSheet(
             title = "Add to playlist",
-            items = editablePlaylists.map { it.name },
+            items = targets.map { it.title },
             primaryLabel = "Create new",
             onPrimaryClick = { showCreatePlaylistDialog(song) }
         ) { index ->
-            val playlist = editablePlaylists.getOrNull(index) ?: return@showSimpleBottomSheet
-            val added = viewModel.addSongToPlaylist(playlist.id, song)
-            if (added) {
-                showToast("Added to ${playlist.name}")
+            val target = targets.getOrNull(index) ?: return@showSimpleBottomSheet
+            if (!target.isRemote) {
+                val added = viewModel.addSongToPlaylist(target.playlist.id, song)
+                if (added) {
+                    showToast("Added to ${target.playlist.name}")
+                } else {
+                    showToast("Song is already in ${target.playlist.name}")
+                }
+                return@showSimpleBottomSheet
+            }
+
+            addSongsToRemotePlaylist(target.playlist, listOf(song))
+        }
+    }
+
+    private fun buildPlaylistAddTargets(songs: List<Song>): List<PlaylistAddTarget> {
+        val localTargets = playlists
+            .filter { it.isEditablePlaylist() }
+            .map { PlaylistAddTarget(title = it.name, playlist = it, isRemote = false) }
+
+        val remoteTargets = playlists
+            .filter {
+                it.isRemoteSystemPlaylist() &&
+                    it.remoteBrowseType == YouTubeItemType.PLAYLIST &&
+                    !it.remoteBrowseId.isNullOrBlank() &&
+                    it.remoteBrowseId != PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID
+            }
+            .takeIf { songs.all { song -> !song.sourceVideoId.isNullOrBlank() } }
+            .orEmpty()
+            .map { PlaylistAddTarget(title = "YouTube - ${it.name}", playlist = it, isRemote = true) }
+
+        return localTargets + remoteTargets
+    }
+
+    private fun addSongsToRemotePlaylist(playlist: Playlist, songs: List<Song>) {
+        val playlistId = playlist.remoteBrowseId ?: run {
+            showToast("Playlist cannot be edited")
+            return
+        }
+        val videoIds = songs.mapNotNull { it.sourceVideoId?.takeIf { id -> id.isNotBlank() } }.distinct()
+        if (videoIds.isEmpty()) {
+            showToast("Only YouTube songs can be added to YouTube playlists")
+            return
+        }
+
+        lifecycleScope.launch {
+            val addedCount = videoIds.count { videoId ->
+                runCatching {
+                    youTubeApiClient.addVideoToPlaylist(playlistId, videoId)
+                }.getOrDefault(false)
+            }
+            if (addedCount > 0) {
+                showToast("Added $addedCount song${if (addedCount == 1) "" else "s"} to ${playlist.name}")
+                viewModel.refreshSpecialPlaylists()
             } else {
-                showToast("Song is already in ${playlist.name}")
+                showToast("Could not update ${playlist.name}")
             }
         }
     }

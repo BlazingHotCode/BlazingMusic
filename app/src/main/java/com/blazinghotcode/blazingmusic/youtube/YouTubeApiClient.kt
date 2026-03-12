@@ -228,6 +228,17 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         return editPlaylist(playlistId, JSONArray().put(action))
     }
 
+    suspend fun addVideoToPlaylist(
+        playlistId: String,
+        videoId: String
+    ): Boolean {
+        if (playlistId.isBlank() || videoId.isBlank()) return false
+        val action = JSONObject()
+            .put("action", "ACTION_ADD_VIDEO")
+            .put("addedVideoId", videoId)
+        return editPlaylist(playlistId, JSONArray().put(action))
+    }
+
     suspend fun likeVideo(videoId: String, like: Boolean): Boolean {
         if (videoId.isBlank()) return false
         val path = if (like) "like/like" else "like/removelike"

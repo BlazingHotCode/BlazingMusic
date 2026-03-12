@@ -349,6 +349,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         ).apply {
             menu.add(Menu.NONE, 1, Menu.NONE, "Play next")
             menu.add(Menu.NONE, 2, Menu.NONE, "Add to queue")
+            menu.add(Menu.NONE, 6, Menu.NONE, "Add to playlist")
             if (viewModel.canToggleSongLike(song)) {
                 menu.add(Menu.NONE, 5, Menu.NONE, if (viewModel.isSongLiked(song)) "Unlike" else "Like")
             }
@@ -364,6 +365,10 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
                     }
                     2 -> {
                         viewModel.addSongToQueue(song)
+                        true
+                    }
+                    6 -> {
+                        (activity as? MainActivity)?.openAddToPlaylistDialog(song)
                         true
                     }
                     5 -> {
