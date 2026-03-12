@@ -43,6 +43,7 @@ class YouTubeBrowseAdapter(
     private val rows = mutableListOf<Row>()
     private var hideItemThumbnails = false
     private var allowSongItemMenu = false
+    private var currentVideoId: String? = null
     private var headerModel: HeaderModel? = null
     private var browseType: YouTubeItemType = YouTubeItemType.UNKNOWN
 
@@ -67,6 +68,13 @@ class YouTubeBrowseAdapter(
     fun setAllowSongItemMenu(allow: Boolean) {
         if (allowSongItemMenu == allow) return
         allowSongItemMenu = allow
+        notifyDataSetChanged()
+    }
+
+    fun setCurrentSong(song: Song?) {
+        val newVideoId = song?.sourceVideoId?.takeIf { it.isNotBlank() }
+        if (currentVideoId == newVideoId) return
+        currentVideoId = newVideoId
         notifyDataSetChanged()
     }
 
@@ -120,7 +128,7 @@ class YouTubeBrowseAdapter(
 
         when (val row = rows[rowIndex(position)]) {
             is Row.Section -> (holder as SectionViewHolder).bind(row)
-            is Row.Item -> (holder as ItemViewHolder).bind(row.item, hideItemThumbnails, allowSongItemMenu)
+            is Row.Item -> (holder as ItemViewHolder).bind(row.item, hideItemThumbnails, allowSongItemMenu, currentVideoId)
             is Row.HorizontalItems -> (holder as HorizontalSectionViewHolder).bind(row.items)
         }
     }
@@ -516,8 +524,9 @@ class YouTubeBrowseAdapter(
         private val subtitle: TextView = itemView.findViewById(R.id.tvChannelTitle)
         private val btnItemMore: ImageButton = itemView.findViewById(R.id.btnItemMore)
 
-        fun bind(video: YouTubeVideo, hideThumbnail: Boolean, allowSongMenu: Boolean) {
+        fun bind(video: YouTubeVideo, hideThumbnail: Boolean, allowSongMenu: Boolean, currentVideoId: String?) {
             applyThumbnailMode(hideThumbnail)
+            val isNowPlaying = !video.videoId.isNullOrBlank() && video.videoId == currentVideoId
             title.text = video.title
             val typeLabel = when (video.type) {
                 YouTubeItemType.SONG -> "Song"
@@ -549,6 +558,7 @@ class YouTubeBrowseAdapter(
             if (showMenu) {
                 btnItemMore.setOnClickListener { onItemMenuClick(video, btnItemMore) }
             }
+            itemView.setBackgroundResource(if (isNowPlaying) R.drawable.bg_song_item_now_playing else R.drawable.bg_song_item)
             itemView.setOnClickListener { onItemClick(video) }
         }
 

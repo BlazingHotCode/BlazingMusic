@@ -34,6 +34,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         private const val MENU_SONG_RADIO_UP_NEXT = 1
         private const val MENU_SHUFFLE_UPCOMING = 2
         private const val MENU_CLEAR_UPCOMING = 3
+        private const val MENU_ADD_TO_PLAYLIST = 4
         private const val RADIO_INITIAL_READY = 10
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60
@@ -394,6 +395,9 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         popup.menu.add(0, MENU_SONG_RADIO_UP_NEXT, 0, "Song radio (Up next)")
         popup.menu.add(0, MENU_SHUFFLE_UPCOMING, 1, "Shuffle upcoming")
         popup.menu.add(0, MENU_CLEAR_UPCOMING, 2, "Clear upcoming")
+        viewModel.currentSong.value?.let {
+            popup.menu.add(0, MENU_ADD_TO_PLAYLIST, 3, "Add to playlist")
+        }
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 MENU_SONG_RADIO_UP_NEXT -> {
@@ -406,6 +410,11 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
                 }
                 MENU_CLEAR_UPCOMING -> {
                     clearUpcomingQueue()
+                    true
+                }
+                MENU_ADD_TO_PLAYLIST -> {
+                    val song = viewModel.currentSong.value ?: return@setOnMenuItemClickListener false
+                    (activity as? MainActivity)?.openAddToPlaylistDialog(song)
                     true
                 }
                 else -> false

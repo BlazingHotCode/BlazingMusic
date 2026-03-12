@@ -82,8 +82,9 @@ class MainActivity : AppCompatActivity() {
         private const val MENU_PLAY_NOW = 2001
         private const val MENU_PLAY_NEXT = 2002
         private const val MENU_ADD_QUEUE = 2003
-        private const val MENU_TOGGLE_LIKE = 2004
-        private const val MENU_OPEN_PAGE = 2005
+        private const val MENU_ADD_TO_PLAYLIST = 2004
+        private const val MENU_TOGGLE_LIKE = 2005
+        private const val MENU_OPEN_PAGE = 2006
         private const val HOME_MENU_ACCOUNT_LABEL = 3000
         private const val HOME_MENU_SIGN_IN = 3001
         private const val HOME_MENU_HISTORY = 3002
@@ -506,6 +507,10 @@ class MainActivity : AppCompatActivity() {
 
     fun addSongToCurrentQueue(song: Song) {
         viewModel.addSongToQueue(song)
+    }
+
+    fun openAddToPlaylistDialog(song: Song) {
+        showAddSongToPlaylistDialog(song)
     }
 
     fun addSongToPlayNext(song: Song) {
@@ -1957,11 +1962,12 @@ class MainActivity : AppCompatActivity() {
                 popup.menu.add(0, MENU_PLAY_NOW, 0, "Play now")
                 popup.menu.add(0, MENU_PLAY_NEXT, 1, "Play next")
                 popup.menu.add(0, MENU_ADD_QUEUE, 2, "Add to queue")
+                popup.menu.add(0, MENU_ADD_TO_PLAYLIST, 3, "Add to playlist")
                 if (!item.videoId.isNullOrBlank() && viewModel.canToggleSongLike(item.toPlaceholderSong())) {
                     popup.menu.add(
                         0,
                         MENU_TOGGLE_LIKE,
-                        3,
+                        4,
                         if (viewModel.isVideoLiked(item.videoId)) "Unlike" else "Like"
                     )
                 }
@@ -1983,6 +1989,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 MENU_ADD_QUEUE -> {
                     queueHomeFeedItem(item, playNext = false)
+                    true
+                }
+                MENU_ADD_TO_PLAYLIST -> {
+                    addHomeFeedItemToPlaylist(item)
                     true
                 }
                 MENU_TOGGLE_LIKE -> {
@@ -2029,6 +2039,18 @@ class MainActivity : AppCompatActivity() {
                 addSongToCurrentQueue(song)
                 showToast("Added to queue")
             }
+        }
+    }
+
+    private fun addHomeFeedItemToPlaylist(item: YouTubeVideo) {
+        val videoId = item.videoId ?: return
+        lifecycleScope.launch {
+            val streamUrl = runCatching { youTubeApiClient.resolveAudioStreamUrl(videoId) }.getOrNull()
+            if (streamUrl.isNullOrBlank()) {
+                showToast("Could not resolve this song")
+                return@launch
+            }
+            openAddToPlaylistDialog(item.toSong(streamUrl))
         }
     }
 

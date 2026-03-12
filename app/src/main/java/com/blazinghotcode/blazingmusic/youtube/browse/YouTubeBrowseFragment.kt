@@ -112,6 +112,9 @@ class YouTubeBrowseFragment : Fragment() {
         )
         adapter.setHideItemThumbnails(browseType == YouTubeItemType.ALBUM)
         adapter.setAllowSongItemMenu(browseType == YouTubeItemType.PLAYLIST)
+        musicViewModel.currentSong.observe(viewLifecycleOwner) { song ->
+            adapter.setCurrentSong(song)
+        }
         rvBrowseResults.layoutManager = LinearLayoutManager(requireContext())
         rvBrowseResults.adapter = adapter
         rvBrowseResults.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -631,20 +634,21 @@ class YouTubeBrowseFragment : Fragment() {
         PopupMenu(requireContext(), anchor).apply {
             menu.add(0, MENU_PLAY_NEXT, 0, "Play next")
             menu.add(0, MENU_ADD_TO_QUEUE, 1, "Add to queue")
+            menu.add(0, MENU_ADD_TO_PLAYLIST, 2, "Add to playlist")
             val canLike = !item.videoId.isNullOrBlank() &&
                 YouTubeAccountStore.read(requireContext().applicationContext).isLoggedIn
             if (canLike) {
                 menu.add(
                     0,
                     MENU_TOGGLE_LIKE,
-                    2,
+                    3,
                     if (musicViewModel.isVideoLiked(item.videoId)) "Unlike" else "Like"
                 )
             }
-            menu.add(0, MENU_REMOVE_FROM_PLAYLIST, 3, "Remove from playlist")
+            menu.add(0, MENU_REMOVE_FROM_PLAYLIST, 4, "Remove from playlist")
             if (playlistSortMode == PlaylistSortMode.DEFAULT) {
-                menu.add(0, MENU_MOVE_UP, 4, "Move up")
-                menu.add(0, MENU_MOVE_DOWN, 5, "Move down")
+                menu.add(0, MENU_MOVE_UP, 5, "Move up")
+                menu.add(0, MENU_MOVE_DOWN, 6, "Move down")
             }
             setOnMenuItemClickListener { selected ->
                 when (selected.itemId) {
@@ -654,6 +658,10 @@ class YouTubeBrowseFragment : Fragment() {
                     }
                     MENU_ADD_TO_QUEUE -> {
                         enqueuePlaylistSong(item, playNext = false)
+                        true
+                    }
+                    MENU_ADD_TO_PLAYLIST -> {
+                        addPlaylistSongToPlaylist(item)
                         true
                     }
                     MENU_TOGGLE_LIKE -> {
@@ -714,6 +722,18 @@ class YouTubeBrowseFragment : Fragment() {
             }
             val success = musicViewModel.setSongLiked(song, liked = true)
             if (success) showToast("Added to Liked Music") else showToast("Sign in to like YouTube songs")
+        }
+    }
+
+    private fun addPlaylistSongToPlaylist(item: YouTubeVideo) {
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            val song = resolvePlayableSong(item)
+            if (song == null) {
+                showToast("Could not resolve this track")
+                return@launch
+            }
+            (activity as? MainActivity)?.openAddToPlaylistDialog(song)
         }
     }
 
@@ -953,7 +973,13 @@ class YouTubeBrowseFragment : Fragment() {
         if (browseId != YouTubeAccountSurfaces.PLAYLISTS_BROWSE_ID) return items
         return items.filterNot {
             it.type == YouTubeItemType.PLAYLIST &&
-                it.browseId.equals(PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID, ignoreCase = true)
+                run {
+                    val normalizedBrowseId = it.browseId?.removePrefix("VL")?.trim()?.uppercase()
+                    val normalizedTitle = it.title.trim().lowercase()
+                    normalizedBrowseId in setOf("LM", "SE") ||
+                        normalizedTitle == "liked music" ||
+                        normalizedTitle == "liked songs"
+                }
         }
     }
 
@@ -1125,13 +1151,14 @@ class YouTubeBrowseFragment : Fragment() {
         private const val MENU_OPEN_BROWSE = 1
         private const val MENU_PLAY_NEXT = 2
         private const val MENU_ADD_TO_QUEUE = 3
-        private const val MENU_REMOVE_FROM_PLAYLIST = 4
-        private const val MENU_TOGGLE_LIKE = 5
-        private const val MENU_MOVE_UP = 6
-        private const val MENU_MOVE_DOWN = 7
-        private const val MENU_SORT_DEFAULT = 8
-        private const val MENU_SORT_TITLE = 9
-        private const val MENU_SORT_ARTIST = 10
+        private const val MENU_ADD_TO_PLAYLIST = 4
+        private const val MENU_REMOVE_FROM_PLAYLIST = 5
+        private const val MENU_TOGGLE_LIKE = 6
+        private const val MENU_MOVE_UP = 7
+        private const val MENU_MOVE_DOWN = 8
+        private const val MENU_SORT_DEFAULT = 9
+        private const val MENU_SORT_TITLE = 10
+        private const val MENU_SORT_ARTIST = 11
         private const val QUEUE_APPEND_BATCH_SIZE = 8
         private const val RADIO_INITIAL_READY = 10
         private const val RADIO_TARGET_SIZE = 30

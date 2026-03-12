@@ -25,6 +25,7 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -58,6 +59,7 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
         setupRecycler()
         setupActions()
         observeData()
+        updateBottomClearance()
     }
 
     private fun initViews(root: View) {
@@ -135,6 +137,33 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = playlistAdapter
         }
+    }
+
+    private fun updateBottomClearance() {
+        val host = activity ?: return
+        val player = host.findViewById<View>(R.id.playerLayout) ?: return
+        val bottomNav = host.findViewById<View>(R.id.bottomNav) ?: return
+
+        val apply = {
+            val playerHeight = if (player.visibility == View.VISIBLE) player.height else 0
+            val bottomPadding = bottomNav.height + playerHeight + dp(20)
+            rvPlaylists.setPadding(
+                rvPlaylists.paddingLeft,
+                rvPlaylists.paddingTop,
+                rvPlaylists.paddingRight,
+                bottomPadding
+            )
+            tvEmpty.setPadding(
+                tvEmpty.paddingLeft,
+                tvEmpty.paddingTop,
+                tvEmpty.paddingRight,
+                bottomPadding
+            )
+        }
+
+        player.doOnLayout { apply() }
+        bottomNav.doOnLayout { apply() }
+        rvPlaylists.post { apply() }
     }
 
     private fun setupActions() {

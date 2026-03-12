@@ -176,7 +176,10 @@ class YouTubeSearchActivity : AppCompatActivity() {
     private fun showItemMenu(item: YouTubeVideo, anchor: View) {
         val popup = PopupMenu(this, anchor)
         when (item.type) {
-            YouTubeItemType.SONG -> popup.menu.add(0, 1, 0, "Play now")
+            YouTubeItemType.SONG -> {
+                popup.menu.add(0, 1, 0, "Play now")
+                popup.menu.add(0, 4, 1, "Add to playlist")
+            }
             YouTubeItemType.ALBUM -> {
                 popup.menu.add(0, 2, 0, "Open album")
                 popup.menu.add(0, 3, 1, "Play now")
@@ -197,10 +200,44 @@ class YouTubeSearchActivity : AppCompatActivity() {
                     playInApp(item)
                     true
                 }
+                4 -> {
+                    addSongToPlaylist(item)
+                    true
+                }
                 else -> false
             }
         }
         popup.show()
+    }
+
+    private fun addSongToPlaylist(item: YouTubeVideo) {
+        val videoId = item.videoId ?: run {
+            showToast("Could not resolve this song")
+            return
+        }
+        lifecycleScope.launch {
+            val streamUrl = runCatching { apiClient.resolveAudioStreamUrl(videoId) }.getOrNull()
+            if (streamUrl.isNullOrBlank()) {
+                showToast("Could not resolve this song")
+                return@launch
+            }
+            val song = Song(
+                id = (item.id.hashCode().toLong() and 0x7fffffffL) + 10_000_000_000L,
+                title = item.title,
+                artist = item.channelTitle.ifBlank { "YouTube Music" },
+                album = item.sectionTitle ?: "YouTube",
+                duration = 0L,
+                dateAddedSeconds = System.currentTimeMillis() / 1000,
+                path = streamUrl,
+                albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(item.thumbnailUrl, item.videoId),
+                sourceVideoId = item.videoId,
+                sourcePlaylistId = item.sourcePlaylistId,
+                sourcePlaylistSetVideoId = item.sourcePlaylistSetVideoId,
+                sourceParams = item.sourceParams,
+                sourceIndex = item.sourceIndex
+            )
+            (this@YouTubeSearchActivity as? MainActivity)?.openAddToPlaylistDialog(song)
+        }
     }
 
     private fun openBrowse(item: YouTubeVideo) {

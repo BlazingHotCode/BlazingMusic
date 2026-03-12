@@ -16,6 +16,7 @@ class YouTubeSearchAdapter(
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val rows = mutableListOf<Row>()
+    private var currentVideoId: String? = null
 
     fun submitResults(items: List<YouTubeVideo>, grouped: Boolean) {
         rows.clear()
@@ -25,6 +26,13 @@ class YouTubeSearchAdapter(
 
     fun clear() {
         rows.clear()
+        notifyDataSetChanged()
+    }
+
+    fun setCurrentSong(song: Song?) {
+        val newVideoId = song?.sourceVideoId?.takeIf { it.isNotBlank() }
+        if (currentVideoId == newVideoId) return
+        currentVideoId = newVideoId
         notifyDataSetChanged()
     }
 
@@ -55,7 +63,7 @@ class YouTubeSearchAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
             is Row.Header -> (holder as HeaderViewHolder).bind(row.title)
-            is Row.Item -> (holder as ItemViewHolder).bind(row.video)
+            is Row.Item -> (holder as ItemViewHolder).bind(row.video, currentVideoId)
         }
     }
 
@@ -129,7 +137,8 @@ class YouTubeSearchAdapter(
         private val thumb = itemView.findViewById<ImageView>(R.id.ivVideoThumb)
         private val menu = itemView.findViewById<ImageButton>(R.id.btnItemMore)
 
-        fun bind(video: YouTubeVideo) {
+        fun bind(video: YouTubeVideo, currentVideoId: String?) {
+            val isNowPlaying = !video.videoId.isNullOrBlank() && video.videoId == currentVideoId
             title.text = video.title
             subtitle.text = "${typeLabel(video.type)} - ${video.channelTitle.ifBlank { "YouTube Music" }}"
             video.thumbnailUrl?.let { url ->
@@ -145,6 +154,7 @@ class YouTubeSearchAdapter(
             if (showMenu) {
                 menu.setOnClickListener { onItemMenuClick(video, menu) }
             }
+            itemView.setBackgroundResource(if (isNowPlaying) R.drawable.bg_song_item_now_playing else R.drawable.bg_song_item)
             itemView.setOnClickListener { onVideoClick(video) }
         }
 

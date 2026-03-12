@@ -815,7 +815,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                             it.type == YouTubeItemType.PLAYLIST &&
                                 !it.browseId.isNullOrBlank() &&
                                 it.title.isNotBlank() &&
-                                !it.browseId.equals(PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID, ignoreCase = true)
+                                !isHiddenRemotePlaylistItem(it)
                         }
                         .distinctBy { it.browseId }
                         .mapIndexed { index, item ->
@@ -857,7 +857,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun syncYouTubeLikedSongsPlaylist() {
         val fetched = runCatching {
             youTubeApiClient.browseCollection(
-                browseId = PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID,
+                browseId = "VL${PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID}",
                 maxResults = YOUTUBE_LIKED_MAX_RESULTS
             )
         }.getOrNull() ?: return
@@ -1218,6 +1218,17 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         return song.copy(
             sourcePlaylistId = PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID
         )
+    }
+
+    private fun isHiddenRemotePlaylistItem(item: YouTubeVideo): Boolean {
+        val normalizedBrowseId = item.browseId
+            ?.removePrefix("VL")
+            ?.trim()
+            ?.uppercase()
+        val normalizedTitle = item.title.trim().lowercase()
+        return normalizedBrowseId in setOf("LM", "SE") ||
+            normalizedTitle == "liked music" ||
+            normalizedTitle == "liked songs"
     }
 
     private fun placeholderYouTubeSongPath(videoId: String): String {

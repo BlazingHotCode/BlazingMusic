@@ -75,6 +75,9 @@ class YouTubeSearchFragment : Fragment() {
         applyHeaderInsets(view)
         setupList()
         setupActions()
+        musicViewModel.currentSong.observe(viewLifecycleOwner) { song ->
+            adapter.setCurrentSong(song)
+        }
         showState("Search YouTube music sources.")
         val initialQuery = arguments?.getString(ARG_INITIAL_QUERY).orEmpty().trim()
         if (initialQuery.isNotEmpty()) {
@@ -348,15 +351,16 @@ class YouTubeSearchFragment : Fragment() {
                 popup.menu.add(0, MENU_PLAY_NOW, 0, "Play now")
                 popup.menu.add(0, MENU_PLAY_NEXT, 1, "Play next")
                 popup.menu.add(0, MENU_ADD_QUEUE, 2, "Add to queue")
+                popup.menu.add(0, MENU_ADD_TO_PLAYLIST, 3, "Add to playlist")
                 if (!item.videoId.isNullOrBlank() && musicViewModel.canToggleSongLike(item.toPlaceholderSong())) {
                     popup.menu.add(
                         0,
                         MENU_TOGGLE_LIKE,
-                        3,
+                        4,
                         if (musicViewModel.isVideoLiked(item.videoId)) "Unlike" else "Like"
                     )
                 }
-                popup.menu.add(0, MENU_SONG_RADIO_UP_NEXT, 4, "Song radio (Up next)")
+                popup.menu.add(0, MENU_SONG_RADIO_UP_NEXT, 5, "Song radio (Up next)")
             }
             YouTubeItemType.ALBUM -> {
                 popup.menu.add(0, MENU_OPEN_ALBUM, 0, "Open album")
@@ -375,6 +379,10 @@ class YouTubeSearchFragment : Fragment() {
                 }
                 MENU_ADD_QUEUE -> {
                     enqueueSong(item, playNext = false)
+                    true
+                }
+                MENU_ADD_TO_PLAYLIST -> {
+                    addSongToPlaylist(item)
                     true
                 }
                 MENU_TOGGLE_LIKE -> {
@@ -619,9 +627,10 @@ class YouTubeSearchFragment : Fragment() {
         private const val MENU_PLAY_NOW = 1
         private const val MENU_PLAY_NEXT = 2
         private const val MENU_ADD_QUEUE = 3
-        private const val MENU_TOGGLE_LIKE = 4
-        private const val MENU_SONG_RADIO_UP_NEXT = 5
-        private const val MENU_OPEN_ALBUM = 6
+        private const val MENU_ADD_TO_PLAYLIST = 4
+        private const val MENU_TOGGLE_LIKE = 5
+        private const val MENU_SONG_RADIO_UP_NEXT = 6
+        private const val MENU_OPEN_ALBUM = 7
         private const val RADIO_INITIAL_READY = 10
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60
@@ -634,6 +643,17 @@ class YouTubeSearchFragment : Fragment() {
                     putString(ARG_INITIAL_QUERY, initialQuery)
                 }
             }
+        }
+    }
+
+    private fun addSongToPlaylist(item: YouTubeVideo) {
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            val song = resolvePlayableSong(item) ?: run {
+                showToast("Could not resolve this song")
+                return@launch
+            }
+            (activity as? MainActivity)?.openAddToPlaylistDialog(song)
         }
     }
 
