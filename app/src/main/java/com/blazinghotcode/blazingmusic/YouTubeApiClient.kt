@@ -521,11 +521,20 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         visitorData: String,
         dataSyncId: String
     ): String? {
+        return fetchAccountProfile(cookie, visitorData, dataSyncId)?.name
+    }
+
+    suspend fun fetchAccountProfile(
+        cookie: String,
+        visitorData: String,
+        dataSyncId: String
+    ): AccountProfile? {
         val auth = YouTubeAccountStore.AccountAuth(
             cookie = cookie,
             visitorData = visitorData,
             dataSyncId = dataSyncId,
-            accountName = ""
+            accountName = "",
+            avatarUrl = ""
         )
         return withContext(Dispatchers.IO) {
             runCatching {
@@ -541,7 +550,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                 }
                 try {
                     val html = connection.inputStream.bufferedReader().use { it.readText() }
-                    extractAccountNameFromHtml(html)
+                    extractAccountProfileFromHtml(html)
                 } finally {
                     connection.disconnect()
                 }
@@ -964,15 +973,26 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         return "SAPISIDHASH ${timestamp}_$digest"
     }
 
-    private fun extractAccountNameFromHtml(html: String): String? {
-        val patterns = listOf(
+    private fun extractAccountProfileFromHtml(html: String): AccountProfile? {
+        val namePatterns = listOf(
             Regex("\"accountName\":\"([^\"]+)\""),
             Regex("\"name\":\"([^\"]+)\",\"email\":"),
             Regex("aria-label=\"Google Account: ([^\"]+)\"")
         )
-        return patterns.firstNotNullOfOrNull { regex ->
+        val avatarPatterns = listOf(
+            Regex("\"accountPhoto\":\"([^\"]+)\""),
+            Regex("\"avatarUrl\":\"([^\"]+)\""),
+            Regex("https:\\/\\/lh3\\.googleusercontent\\.com[^\"\\s<]+")
+        )
+        val name = namePatterns.firstNotNullOfOrNull { regex ->
             regex.find(html)?.groupValues?.getOrNull(1)
-        }?.trim()?.takeIf { it.isNotBlank() }
+        }?.trim().orEmpty()
+        val avatarUrl = avatarPatterns.firstNotNullOfOrNull { regex ->
+            val match = regex.find(html) ?: return@firstNotNullOfOrNull null
+            match.groupValues.getOrNull(1)?.ifBlank { null } ?: match.value
+        }?.replace("\\/", "/")?.trim().orEmpty()
+        if (name.isBlank() && avatarUrl.isBlank()) return null
+        return AccountProfile(name = name, avatarUrl = avatarUrl.takeIf { it.isNotBlank() })
     }
 
     private fun parseShelfItems(root: JSONObject): List<YouTubeVideo> {
@@ -1664,5 +1684,10 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         val playlistSetVideoId: String? = null,
         val params: String? = null,
         val index: Int? = null
+    )
+
+    data class AccountProfile(
+        val name: String,
+        val avatarUrl: String?
     )
 }

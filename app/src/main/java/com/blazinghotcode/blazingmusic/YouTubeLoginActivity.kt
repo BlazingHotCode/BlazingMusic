@@ -88,16 +88,17 @@ class YouTubeLoginActivity : AppCompatActivity() {
         tvLoginStatus.text = "Saving login..."
         val normalizedDataSyncId = dataSyncId.substringBefore("||").trim()
         lifecycleScope.launch {
-            val accountName = runCatching {
-                apiClient.fetchAccountDisplayName(cookie, visitorData, normalizedDataSyncId)
-            }.getOrNull().orEmpty()
+            val profile = runCatching {
+                apiClient.fetchAccountProfile(cookie, visitorData, normalizedDataSyncId)
+            }.getOrNull()
 
             YouTubeAccountStore.save(
                 context = this@YouTubeLoginActivity,
                 cookie = cookie,
                 visitorData = visitorData,
                 dataSyncId = normalizedDataSyncId,
-                accountName = accountName
+                accountName = profile?.name.orEmpty(),
+                avatarUrl = profile?.avatarUrl.orEmpty()
             )
             Toast.makeText(this@YouTubeLoginActivity, "YouTube account connected", Toast.LENGTH_SHORT).show()
             startActivity(Intent(this@YouTubeLoginActivity, SettingsActivity::class.java).apply {

@@ -51,6 +51,8 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import coil.load
+import coil.transform.RoundedCornersTransformation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -71,6 +73,8 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
         private const val HOME_BROWSE_ID = "FEmusic_home"
         private const val HOME_MAX_RESULTS = 160
+        private const val ACCOUNT_HISTORY_URL = "https://music.youtube.com/history"
+        private const val ACCOUNT_LIBRARY_URL = "https://music.youtube.com/library/playlists"
         private const val MENU_PLAY_NOW = 2001
         private const val MENU_PLAY_NEXT = 2002
         private const val MENU_ADD_QUEUE = 2003
@@ -108,6 +112,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHomeStateMessage: TextView
     private lateinit var btnHomeStateAction: Button
     private lateinit var tvHomeTitle: TextView
+    private lateinit var homeAccountRow: View
+    private lateinit var ivHomeAccountAvatar: ImageView
+    private lateinit var tvHomeAccountName: TextView
+    private lateinit var tvHomeAccountSummary: TextView
+    private lateinit var btnHomeAccountHistory: Button
+    private lateinit var btnHomeAccountLibrary: Button
     private lateinit var songAlphabetIndex: AlphabetIndexView
     private lateinit var songScrollTrack: View
     private lateinit var songScrollThumb: View
@@ -248,6 +258,12 @@ class MainActivity : AppCompatActivity() {
         tvHomeStateMessage = findViewById(R.id.tvHomeStateMessage)
         btnHomeStateAction = findViewById(R.id.btnHomeStateAction)
         tvHomeTitle = findViewById(R.id.tvTitle)
+        homeAccountRow = findViewById(R.id.homeAccountRow)
+        ivHomeAccountAvatar = findViewById(R.id.ivHomeAccountAvatar)
+        tvHomeAccountName = findViewById(R.id.tvHomeAccountName)
+        tvHomeAccountSummary = findViewById(R.id.tvHomeAccountSummary)
+        btnHomeAccountHistory = findViewById(R.id.btnHomeAccountHistory)
+        btnHomeAccountLibrary = findViewById(R.id.btnHomeAccountLibrary)
         songAlphabetIndex = findViewById(R.id.songAlphabetIndex)
         songScrollTrack = findViewById(R.id.songScrollTrack)
         songScrollThumb = findViewById(R.id.songScrollThumb)
@@ -255,6 +271,12 @@ class MainActivity : AppCompatActivity() {
         youtubeContainer = findViewById(R.id.youtubeContainer)
         currentSongSort = loadHomeSort()
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
+        btnHomeAccountHistory.setOnClickListener {
+            startActivity(YouTubeAccountWebActivity.intent(this, "History", ACCOUNT_HISTORY_URL))
+        }
+        btnHomeAccountLibrary.setOnClickListener {
+            startActivity(YouTubeAccountWebActivity.intent(this, "Library", ACCOUNT_LIBRARY_URL))
+        }
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
@@ -1246,6 +1268,7 @@ class MainActivity : AppCompatActivity() {
         if (!isOnHomeTab) {
             homeStateContainer.visibility = View.GONE
             rvSongs.visibility = View.GONE
+            homeAccountRow.visibility = View.GONE
             etSearch.visibility = View.GONE
             btnSortSongs.visibility = View.GONE
             songAlphabetIndex.visibility = View.GONE
@@ -1256,9 +1279,11 @@ class MainActivity : AppCompatActivity() {
 
         etSearch.visibility = View.GONE
         btnSortSongs.visibility = View.GONE
+        homeAccountRow.visibility = View.VISIBLE
         songAlphabetIndex.visibility = View.GONE
         songScrollTrack.visibility = View.GONE
         songScrollThumb.visibility = View.GONE
+        bindHomeAccountRow()
 
         if (homeFeedItems.isNotEmpty()) {
             homeStateContainer.visibility = View.GONE
@@ -1299,6 +1324,7 @@ class MainActivity : AppCompatActivity() {
     private fun showHomeState(title: String, message: String, actionLabel: String) {
         homeStateContainer.visibility = View.VISIBLE
         rvSongs.visibility = View.GONE
+        homeAccountRow.visibility = View.VISIBLE
         etSearch.visibility = View.GONE
         btnSortSongs.visibility = View.GONE
         songAlphabetIndex.visibility = View.GONE
@@ -1632,7 +1658,8 @@ class MainActivity : AppCompatActivity() {
                 browseType = YouTubeItemType.UNKNOWN,
                 title = greetingTitle(accountName.takeIf { account.isLoggedIn }),
                 subtitle = subtitle,
-                artworkUrl = homeFeedItems.firstNotNullOfOrNull { it.thumbnailUrl },
+                artworkUrl = account.avatarUrl.takeIf { it.isNotBlank() }
+                    ?: homeFeedItems.firstNotNullOfOrNull { it.thumbnailUrl },
                 stateMessage = if (account.isLoggedIn) {
                     "Albums, playlists, mixes, and suggestions tuned to your connected YouTube account."
                 } else {
@@ -1646,6 +1673,29 @@ class MainActivity : AppCompatActivity() {
                 canShuffle = false
             )
         )
+    }
+
+    private fun bindHomeAccountRow() {
+        val account = YouTubeAccountStore.read(this)
+        val isLoggedIn = account.isLoggedIn
+        account.avatarUrl.takeIf { it.isNotBlank() }?.let { avatarUrl ->
+            ivHomeAccountAvatar.load(avatarUrl) {
+                crossfade(true)
+                transformations(RoundedCornersTransformation(999f))
+            }
+        } ?: ivHomeAccountAvatar.setImageResource(R.drawable.ml_library_music)
+        tvHomeAccountName.text = if (isLoggedIn) {
+            account.accountName.ifBlank { "Connected account" }
+        } else {
+            "Guest"
+        }
+        tvHomeAccountSummary.text = if (isLoggedIn) {
+            "Signed in for personalized shelves, account history, and library pages"
+        } else {
+            "Sign in from Settings to unlock personalized YouTube Music shelves"
+        }
+        btnHomeAccountHistory.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
+        btnHomeAccountLibrary.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
     }
 
     private fun greetingTitle(accountName: String?): String {
