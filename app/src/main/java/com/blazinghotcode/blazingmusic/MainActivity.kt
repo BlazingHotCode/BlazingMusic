@@ -73,12 +73,28 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
         private const val HOME_BROWSE_ID = "FEmusic_home"
         private const val HOME_MAX_RESULTS = 160
-        private const val ACCOUNT_HISTORY_URL = "https://music.youtube.com/history"
-        private const val ACCOUNT_LIBRARY_URL = "https://music.youtube.com/library/playlists"
+        private const val ACCOUNT_HISTORY_BROWSE_ID = "FEmusic_history"
+        private const val ACCOUNT_LIBRARY_BROWSE_ID = "FEmusic_liked_playlists"
+        private const val EXTRA_OPEN_ACCOUNT_BROWSE_ID = "open_account_browse_id"
+        private const val EXTRA_OPEN_ACCOUNT_TITLE = "open_account_title"
+        private const val EXTRA_OPEN_ACCOUNT_TYPE = "open_account_type"
         private const val MENU_PLAY_NOW = 2001
         private const val MENU_PLAY_NEXT = 2002
         private const val MENU_ADD_QUEUE = 2003
         private const val MENU_OPEN_PAGE = 2004
+
+        fun accountBrowseIntent(
+            context: Context,
+            browseId: String,
+            title: String,
+            type: YouTubeItemType
+        ): Intent {
+            return Intent(context, MainActivity::class.java)
+                .putExtra(EXTRA_OPEN_ACCOUNT_BROWSE_ID, browseId)
+                .putExtra(EXTRA_OPEN_ACCOUNT_TITLE, title)
+                .putExtra(EXTRA_OPEN_ACCOUNT_TYPE, type.ordinal)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
     }
 
     private val viewModel: MusicViewModel by viewModels()
@@ -207,6 +223,7 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         setupBackNavigation()
         checkPermissions()
+        handleAccountBrowseIntent(intent)
         handlePlaybackActionIntent(intent)
     }
 
@@ -222,6 +239,7 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleAccountBrowseIntent(intent)
         handlePlaybackActionIntent(intent)
     }
 
@@ -272,10 +290,18 @@ class MainActivity : AppCompatActivity() {
         currentSongSort = loadHomeSort()
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
         btnHomeAccountHistory.setOnClickListener {
-            startActivity(YouTubeAccountWebActivity.intent(this, "History", ACCOUNT_HISTORY_URL))
+            openAccountBrowseSurface(
+                browseId = ACCOUNT_HISTORY_BROWSE_ID,
+                title = "History",
+                type = YouTubeItemType.SONG
+            )
         }
         btnHomeAccountLibrary.setOnClickListener {
-            startActivity(YouTubeAccountWebActivity.intent(this, "Library", ACCOUNT_LIBRARY_URL))
+            openAccountBrowseSurface(
+                browseId = ACCOUNT_LIBRARY_BROWSE_ID,
+                title = "Library",
+                type = YouTubeItemType.PLAYLIST
+            )
         }
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -1337,6 +1363,37 @@ class MainActivity : AppCompatActivity() {
 
     private fun onHomeStateActionClicked() {
         refreshHomeFeed(forceRefresh = true)
+    }
+
+    private fun handleAccountBrowseIntent(intent: Intent?) {
+        val safeIntent = intent ?: return
+        val browseId = safeIntent.getStringExtra(EXTRA_OPEN_ACCOUNT_BROWSE_ID).orEmpty()
+        if (browseId.isBlank()) return
+        val title = safeIntent.getStringExtra(EXTRA_OPEN_ACCOUNT_TITLE).orEmpty().ifBlank { "YouTube" }
+        val typeOrdinal = safeIntent.getIntExtra(EXTRA_OPEN_ACCOUNT_TYPE, YouTubeItemType.UNKNOWN.ordinal)
+        val type = YouTubeItemType.entries.getOrNull(typeOrdinal) ?: YouTubeItemType.UNKNOWN
+        openAccountBrowseSurface(browseId, title, type)
+        safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_BROWSE_ID)
+        safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_TITLE)
+        safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_TYPE)
+    }
+
+    private fun openAccountBrowseSurface(
+        browseId: String,
+        title: String,
+        type: YouTubeItemType
+    ) {
+        openYouTubeBrowse(
+            YouTubeVideo(
+                id = "account:$browseId",
+                title = title,
+                channelTitle = YouTubeAccountStore.read(this).accountName,
+                thumbnailUrl = null,
+                browseId = browseId,
+                browseParams = null,
+                type = type
+            )
+        )
     }
 
     private fun requestAudioPermissionFromState() {

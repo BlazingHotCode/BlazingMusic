@@ -101,6 +101,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
 
         var root = post("browse", initialBody)
         var artistInfo: YouTubeArtistInfo? = null
+        var lastContinuation: String? = null
         var pages = 0
         while (root != null && pages < 8 && collected.size < capped) {
             pages += 1
@@ -117,6 +118,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             val continuation = extractPlaylistPanelContinuation(root)
                 ?.takeIf { visitedContinuations.add(it) }
                 ?: break
+            lastContinuation = continuation
             val continuationBody = JSONObject()
                 .put("context", contextObject())
                 .put("continuation", continuation)
@@ -125,7 +127,41 @@ class YouTubeApiClient(private val appContext: Context? = null) {
 
         return YouTubeBrowsePage(
             items = collected.take(capped),
-            artistInfo = artistInfo
+            artistInfo = artistInfo,
+            continuation = lastContinuation
+        )
+    }
+
+    suspend fun browseContinuationPage(
+        continuation: String,
+        maxResults: Int = 300
+    ): YouTubeBrowsePage {
+        if (continuation.isBlank()) return YouTubeBrowsePage(emptyList())
+        val capped = maxResults.coerceIn(1, 1000)
+        val visitedContinuations = hashSetOf<String>()
+        val seen = hashSetOf<String>()
+        val collected = mutableListOf<YouTubeVideo>()
+        var nextContinuation: String? = continuation.takeIf { visitedContinuations.add(it) }
+        var root: JSONObject? = null
+        var pages = 0
+        while (!nextContinuation.isNullOrBlank() && pages < 6 && collected.size < capped) {
+            pages += 1
+            root = post(
+                "browse",
+                JSONObject().put("context", contextObject()).put("continuation", nextContinuation)
+            )
+            if (root == null) break
+            parseShelfItems(root).forEach { item ->
+                val key = item.videoId ?: item.id
+                if (seen.add(key)) collected += item
+            }
+            if (collected.size >= capped) break
+            nextContinuation = extractPlaylistPanelContinuation(root)
+                ?.takeIf { visitedContinuations.add(it) }
+        }
+        return YouTubeBrowsePage(
+            items = collected.take(capped),
+            continuation = nextContinuation
         )
     }
 

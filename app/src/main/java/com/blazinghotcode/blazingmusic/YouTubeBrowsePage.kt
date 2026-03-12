@@ -5,7 +5,8 @@ package com.blazinghotcode.blazingmusic
  */
 data class YouTubeBrowsePage(
     val items: List<YouTubeVideo>,
-    val artistInfo: YouTubeArtistInfo? = null
+    val artistInfo: YouTubeArtistInfo? = null,
+    val continuation: String? = null
 )
 
 data class YouTubeArtistInfo(

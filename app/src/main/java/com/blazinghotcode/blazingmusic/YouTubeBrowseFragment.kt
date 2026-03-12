@@ -48,6 +48,8 @@ class YouTubeBrowseFragment : Fragment() {
     private var cachedResolvedQueue: List<Song> = emptyList()
     private var artistInfo: YouTubeArtistInfo? = null
     private var stateMessage: String = ""
+    private var continuationToken: String? = null
+    private var isLoadingMore = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,6 +107,17 @@ class YouTubeBrowseFragment : Fragment() {
         adapter.setHideItemThumbnails(browseType == YouTubeItemType.ALBUM)
         rvBrowseResults.layoutManager = LinearLayoutManager(requireContext())
         rvBrowseResults.adapter = adapter
+        rvBrowseResults.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                if (dy <= 0 || isLoadingMore || continuationToken.isNullOrBlank()) return
+                val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
+                val total = layoutManager.itemCount
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
+                if (lastVisible >= total - 6) {
+                    loadMoreBrowse()
+                }
+            }
+        })
     }
 
     private fun setupActions() {
@@ -127,6 +140,7 @@ class YouTubeBrowseFragment : Fragment() {
 
             loadedItems = page.items
             artistInfo = page.artistInfo
+            continuationToken = page.continuation
             hydrateBrowseChrome()
             adapter.submit(loadedItems)
 
@@ -135,6 +149,26 @@ class YouTubeBrowseFragment : Fragment() {
             } else {
                 showState("Browsing ${browseTypeLabel()}.")
             }
+        }
+    }
+
+    private fun loadMoreBrowse() {
+        val continuation = continuationToken ?: return
+        isLoadingMore = true
+        viewLifecycleOwner.lifecycleScope.launch {
+            val page = runCatching {
+                apiClient.browseContinuationPage(continuation, maxResults = 120)
+            }.getOrNull()
+            isLoadingMore = false
+            if (page == null || page.items.isEmpty()) {
+                continuationToken = null
+                return@launch
+            }
+            continuationToken = page.continuation
+            loadedItems = (loadedItems + page.items)
+                .distinctBy { it.videoId ?: it.id }
+            hydrateBrowseChrome()
+            adapter.submit(loadedItems)
         }
     }
 

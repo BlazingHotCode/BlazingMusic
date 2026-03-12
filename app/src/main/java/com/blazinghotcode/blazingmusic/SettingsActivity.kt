@@ -99,10 +99,10 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, "YouTube account removed", Toast.LENGTH_SHORT).show()
         }
         btnAccountHistory.setOnClickListener {
-            startActivity(YouTubeAccountWebActivity.intent(this, "History", HISTORY_URL))
+            startActivity(MainActivity.accountBrowseIntent(this, HISTORY_BROWSE_ID, "History", YouTubeItemType.SONG))
         }
         btnAccountLibrary.setOnClickListener {
-            startActivity(YouTubeAccountWebActivity.intent(this, "Library", LIBRARY_URL))
+            startActivity(MainActivity.accountBrowseIntent(this, LIBRARY_BROWSE_ID, "Library", YouTubeItemType.PLAYLIST))
         }
     }
 
@@ -148,8 +148,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private companion object {
-        const val HISTORY_URL = "https://music.youtube.com/history"
-        const val LIBRARY_URL = "https://music.youtube.com/library/playlists"
+        const val HISTORY_BROWSE_ID = "FEmusic_history"
+        const val LIBRARY_BROWSE_ID = "FEmusic_liked_playlists"
     }
 }
 
