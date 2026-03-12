@@ -17,6 +17,7 @@ import android.view.GestureDetector
 import android.view.Gravity
 import android.view.Menu
 import android.view.MotionEvent
+import android.webkit.CookieManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.view.View
@@ -77,11 +78,17 @@ class MainActivity : AppCompatActivity() {
         private const val EXTRA_OPEN_ACCOUNT_BROWSE_ID = "open_account_browse_id"
         private const val EXTRA_OPEN_ACCOUNT_TITLE = "open_account_title"
         private const val EXTRA_OPEN_ACCOUNT_TYPE = "open_account_type"
-        private const val EXTRA_OPEN_PLAYLISTS_TAB = "open_playlists_tab"
         private const val MENU_PLAY_NOW = 2001
         private const val MENU_PLAY_NEXT = 2002
         private const val MENU_ADD_QUEUE = 2003
         private const val MENU_OPEN_PAGE = 2004
+        private const val HOME_MENU_ACCOUNT_LABEL = 3000
+        private const val HOME_MENU_SIGN_IN = 3001
+        private const val HOME_MENU_HISTORY = 3002
+        private const val HOME_MENU_LIBRARY = 3003
+        private const val HOME_MENU_PLAYLISTS = 3004
+        private const val HOME_MENU_SETTINGS = 3005
+        private const val HOME_MENU_LOGOUT = 3006
 
         fun accountBrowseIntent(
             context: Context,
@@ -96,11 +103,6 @@ class MainActivity : AppCompatActivity() {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
 
-        fun playlistsTabIntent(context: Context): Intent {
-            return Intent(context, MainActivity::class.java)
-                .putExtra(EXTRA_OPEN_PLAYLISTS_TAB, true)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        }
     }
 
     private val viewModel: MusicViewModel by viewModels()
@@ -128,18 +130,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTotalTime: TextView
     private lateinit var etSearch: EditText
     private lateinit var btnSortSongs: Button
-    private lateinit var btnSettings: ImageButton
+    private lateinit var btnHomeAvatarMenu: ImageButton
     private lateinit var homeStateContainer: View
     private lateinit var tvHomeStateTitle: TextView
     private lateinit var tvHomeStateMessage: TextView
     private lateinit var btnHomeStateAction: Button
     private lateinit var tvHomeTitle: TextView
-    private lateinit var homeAccountRow: View
-    private lateinit var ivHomeAccountAvatar: ImageView
-    private lateinit var tvHomeAccountName: TextView
-    private lateinit var tvHomeAccountSummary: TextView
-    private lateinit var btnHomeAccountHistory: Button
-    private lateinit var btnHomeAccountLibrary: Button
     private lateinit var songAlphabetIndex: AlphabetIndexView
     private lateinit var songScrollTrack: View
     private lateinit var songScrollThumb: View
@@ -231,7 +227,6 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         setupBackNavigation()
         checkPermissions()
-        handleOpenPlaylistsIntent(intent)
         handleAccountBrowseIntent(intent)
         handlePlaybackActionIntent(intent)
     }
@@ -248,7 +243,6 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleOpenPlaylistsIntent(intent)
         handleAccountBrowseIntent(intent)
         handlePlaybackActionIntent(intent)
     }
@@ -280,18 +274,12 @@ class MainActivity : AppCompatActivity() {
         tvTotalTime = findViewById(R.id.tvTotalTime)
         etSearch = findViewById(R.id.etSearch)
         btnSortSongs = findViewById(R.id.btnSortSongs)
-        btnSettings = findViewById(R.id.btnSettings)
+        btnHomeAvatarMenu = findViewById(R.id.btnHomeAvatarMenu)
         homeStateContainer = findViewById(R.id.homeStateContainer)
         tvHomeStateTitle = findViewById(R.id.tvHomeStateTitle)
         tvHomeStateMessage = findViewById(R.id.tvHomeStateMessage)
         btnHomeStateAction = findViewById(R.id.btnHomeStateAction)
         tvHomeTitle = findViewById(R.id.tvTitle)
-        homeAccountRow = findViewById(R.id.homeAccountRow)
-        ivHomeAccountAvatar = findViewById(R.id.ivHomeAccountAvatar)
-        tvHomeAccountName = findViewById(R.id.tvHomeAccountName)
-        tvHomeAccountSummary = findViewById(R.id.tvHomeAccountSummary)
-        btnHomeAccountHistory = findViewById(R.id.btnHomeAccountHistory)
-        btnHomeAccountLibrary = findViewById(R.id.btnHomeAccountLibrary)
         songAlphabetIndex = findViewById(R.id.songAlphabetIndex)
         songScrollTrack = findViewById(R.id.songScrollTrack)
         songScrollThumb = findViewById(R.id.songScrollThumb)
@@ -299,19 +287,8 @@ class MainActivity : AppCompatActivity() {
         youtubeContainer = findViewById(R.id.youtubeContainer)
         currentSongSort = loadHomeSort()
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
-        btnHomeAccountHistory.setOnClickListener {
-            openAccountBrowseSurface(
-                browseId = YouTubeAccountSurfaces.HISTORY_BROWSE_ID,
-                title = "History",
-                type = YouTubeItemType.SONG
-            )
-        }
-        btnHomeAccountLibrary.setOnClickListener {
-            startActivity(YouTubeAccountSurfaces.accountHubIntent(this))
-        }
-        btnSettings.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
+        btnHomeAvatarMenu.setOnClickListener { showHomeAvatarMenu() }
+        updateHomeAvatarButton()
         setupDebugAnalyticsViewer()
         tintSearchStartIcon()
         applySystemInsets()
@@ -972,6 +949,77 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateHomeAvatarButton() {
+        val account = YouTubeAccountStore.read(this)
+        account.avatarUrl.takeIf { it.isNotBlank() }?.let { avatarUrl ->
+            btnHomeAvatarMenu.load(avatarUrl) {
+                crossfade(true)
+                transformations(RoundedCornersTransformation(999f))
+            }
+        } ?: btnHomeAvatarMenu.setImageResource(R.drawable.ic_account)
+    }
+
+    private fun showHomeAvatarMenu() {
+        val account = YouTubeAccountStore.read(this)
+        PopupMenu(ContextThemeWrapper(this, R.style.ThemeOverlay_BlazingMusic_PopupMenu), btnHomeAvatarMenu).apply {
+            if (account.isLoggedIn) {
+                val label = account.accountName.ifBlank { "Signed in" }
+                menu.add(Menu.NONE, HOME_MENU_ACCOUNT_LABEL, Menu.NONE, label).isEnabled = false
+                menu.add(Menu.NONE, HOME_MENU_HISTORY, Menu.NONE, "History")
+                menu.add(Menu.NONE, HOME_MENU_LIBRARY, Menu.NONE, "Library")
+                menu.add(Menu.NONE, HOME_MENU_PLAYLISTS, Menu.NONE, "Playlists")
+                menu.add(Menu.NONE, HOME_MENU_SETTINGS, Menu.NONE, "Settings")
+                menu.add(Menu.NONE, HOME_MENU_LOGOUT, Menu.NONE, "Logout")
+            } else {
+                menu.add(Menu.NONE, HOME_MENU_SIGN_IN, Menu.NONE, "Sign in")
+                menu.add(Menu.NONE, HOME_MENU_PLAYLISTS, Menu.NONE, "Playlists")
+                menu.add(Menu.NONE, HOME_MENU_SETTINGS, Menu.NONE, "Settings")
+            }
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    HOME_MENU_SIGN_IN -> {
+                        startActivity(Intent(this@MainActivity, YouTubeLoginActivity::class.java))
+                        true
+                    }
+                    HOME_MENU_HISTORY -> {
+                        openAccountBrowseSurface(
+                            browseId = YouTubeAccountSurfaces.HISTORY_BROWSE_ID,
+                            title = "History",
+                            type = YouTubeItemType.SONG
+                        )
+                        true
+                    }
+                    HOME_MENU_LIBRARY -> {
+                        startActivity(YouTubeAccountSurfaces.accountHubIntent(this@MainActivity))
+                        true
+                    }
+                    HOME_MENU_PLAYLISTS -> {
+                        openPlaylistsTab()
+                        true
+                    }
+                    HOME_MENU_SETTINGS -> {
+                        startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                        true
+                    }
+                    HOME_MENU_LOGOUT -> {
+                        runCatching {
+                            CookieManager.getInstance().removeAllCookies(null)
+                            CookieManager.getInstance().flush()
+                        }
+                        YouTubeAccountStore.clear(this@MainActivity)
+                        viewModel.refreshSpecialPlaylists()
+                        maybeRefreshHomeForAccountChange()
+                        updateHomeAvatarButton()
+                        updateHomeLibraryStateUi()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
+    }
+
     private fun showPlaylistSongsDialog(playlistId: Long) {
         val playlist = playlists.find { it.id == playlistId } ?: return
         if (playlist.isRemoteSystemPlaylist()) {
@@ -1323,7 +1371,6 @@ class MainActivity : AppCompatActivity() {
         if (!isOnHomeTab) {
             homeStateContainer.visibility = View.GONE
             rvSongs.visibility = View.GONE
-            homeAccountRow.visibility = View.GONE
             etSearch.visibility = View.GONE
             btnSortSongs.visibility = View.GONE
             songAlphabetIndex.visibility = View.GONE
@@ -1334,11 +1381,10 @@ class MainActivity : AppCompatActivity() {
 
         etSearch.visibility = View.GONE
         btnSortSongs.visibility = View.GONE
-        homeAccountRow.visibility = View.VISIBLE
         songAlphabetIndex.visibility = View.GONE
         songScrollTrack.visibility = View.GONE
         songScrollThumb.visibility = View.GONE
-        bindHomeAccountRow()
+        updateHomeAvatarButton()
 
         if (homeFeedItems.isNotEmpty()) {
             homeStateContainer.visibility = View.GONE
@@ -1379,7 +1425,6 @@ class MainActivity : AppCompatActivity() {
     private fun showHomeState(title: String, message: String, actionLabel: String) {
         homeStateContainer.visibility = View.VISIBLE
         rvSongs.visibility = View.GONE
-        homeAccountRow.visibility = View.VISIBLE
         etSearch.visibility = View.GONE
         btnSortSongs.visibility = View.GONE
         songAlphabetIndex.visibility = View.GONE
@@ -1405,13 +1450,6 @@ class MainActivity : AppCompatActivity() {
         safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_BROWSE_ID)
         safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_TITLE)
         safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_TYPE)
-    }
-
-    private fun handleOpenPlaylistsIntent(intent: Intent?) {
-        val safeIntent = intent ?: return
-        if (!safeIntent.getBooleanExtra(EXTRA_OPEN_PLAYLISTS_TAB, false)) return
-        openPlaylistsTab()
-        safeIntent.removeExtra(EXTRA_OPEN_PLAYLISTS_TAB)
     }
 
     private fun openAccountBrowseSurface(
@@ -1572,6 +1610,7 @@ class MainActivity : AppCompatActivity() {
             viewModel.loadSongs()
         }
         refreshAccountProfileIfNeeded()
+        updateHomeAvatarButton()
         maybeRefreshHomeForAccountChange()
         updateHomeLibraryStateUi()
         handler.post(updateSeekbarRunnable)
@@ -1717,7 +1756,7 @@ class MainActivity : AppCompatActivity() {
                 avatarUrl = mergedAvatar
             )
             viewModel.refreshSpecialPlaylists()
-            bindHomeAccountRow()
+            updateHomeAvatarButton()
             bindHomeFeedHeader()
         }
     }
@@ -1795,7 +1834,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindHomeFeedHeader() {
         val account = YouTubeAccountStore.read(this)
-        val accountName = account.accountName.ifBlank { "there" }
         val subtitle = buildString {
             append(
                 if (account.isLoggedIn) {
@@ -1812,7 +1850,11 @@ class MainActivity : AppCompatActivity() {
         homeFeedAdapter.setHeader(
             YouTubeBrowseAdapter.HeaderModel(
                 browseType = YouTubeItemType.UNKNOWN,
-                title = greetingTitle(accountName.takeIf { account.isLoggedIn }),
+                title = if (account.isLoggedIn) {
+                    account.accountName.ifBlank { "Your Home" }
+                } else {
+                    "Music Home"
+                },
                 subtitle = subtitle,
                 artworkUrl = account.avatarUrl.takeIf { it.isNotBlank() }
                     ?: homeFeedItems.firstNotNullOfOrNull { it.thumbnailUrl },
@@ -1829,39 +1871,6 @@ class MainActivity : AppCompatActivity() {
                 canShuffle = false
             )
         )
-    }
-
-    private fun bindHomeAccountRow() {
-        val account = YouTubeAccountStore.read(this)
-        val isLoggedIn = account.isLoggedIn
-        account.avatarUrl.takeIf { it.isNotBlank() }?.let { avatarUrl ->
-            ivHomeAccountAvatar.load(avatarUrl) {
-                crossfade(true)
-                transformations(RoundedCornersTransformation(999f))
-            }
-        } ?: ivHomeAccountAvatar.setImageResource(R.drawable.ic_account)
-        tvHomeAccountName.text = if (isLoggedIn) {
-            account.accountName.ifBlank { "Connected account" }
-        } else {
-            "Guest"
-        }
-        tvHomeAccountSummary.text = if (isLoggedIn) {
-            "Signed in for personalized shelves, account history, and library pages"
-        } else {
-            "Sign in from Settings to unlock personalized YouTube Music shelves"
-        }
-        btnHomeAccountHistory.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
-        btnHomeAccountLibrary.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
-    }
-
-    private fun greetingTitle(accountName: String?): String {
-        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-        val greeting = when (hour) {
-            in 5..11 -> "Good morning"
-            in 12..17 -> "Good afternoon"
-            else -> "Good evening"
-        }
-        return if (accountName.isNullOrBlank()) greeting else "$greeting, $accountName"
     }
 
     private fun currentHomeRefreshLabel(): String {
