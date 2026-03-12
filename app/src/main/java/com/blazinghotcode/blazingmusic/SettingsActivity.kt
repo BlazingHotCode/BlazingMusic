@@ -99,10 +99,17 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, "YouTube account removed", Toast.LENGTH_SHORT).show()
         }
         btnAccountHistory.setOnClickListener {
-            startActivity(MainActivity.accountBrowseIntent(this, HISTORY_BROWSE_ID, "History", YouTubeItemType.SONG))
+            startActivity(
+                MainActivity.accountBrowseIntent(
+                    this,
+                    YouTubeAccountSurfaces.HISTORY_BROWSE_ID,
+                    "History",
+                    YouTubeItemType.SONG
+                )
+            )
         }
         btnAccountLibrary.setOnClickListener {
-            startActivity(MainActivity.accountBrowseIntent(this, LIBRARY_BROWSE_ID, "Library", YouTubeItemType.PLAYLIST))
+            startActivity(YouTubeAccountSurfaces.accountHubIntent(this))
         }
     }
 
@@ -145,11 +152,6 @@ class SettingsActivity : AppCompatActivity() {
         accountSurfaceRow.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
         btnAccountLogin.text = if (isLoggedIn) "Re-login" else "Google login"
         btnAccountLogout.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
-    }
-
-    private companion object {
-        const val HISTORY_BROWSE_ID = "FEmusic_history"
-        const val LIBRARY_BROWSE_ID = "FEmusic_liked_playlists"
     }
 }
 

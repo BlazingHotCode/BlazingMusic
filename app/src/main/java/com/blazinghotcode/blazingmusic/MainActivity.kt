@@ -73,8 +73,6 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
         private const val HOME_BROWSE_ID = "FEmusic_home"
         private const val HOME_MAX_RESULTS = 160
-        private const val ACCOUNT_HISTORY_BROWSE_ID = "FEmusic_history"
-        private const val ACCOUNT_LIBRARY_BROWSE_ID = "FEmusic_liked_playlists"
         private const val EXTRA_OPEN_ACCOUNT_BROWSE_ID = "open_account_browse_id"
         private const val EXTRA_OPEN_ACCOUNT_TITLE = "open_account_title"
         private const val EXTRA_OPEN_ACCOUNT_TYPE = "open_account_type"
@@ -291,17 +289,13 @@ class MainActivity : AppCompatActivity() {
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
         btnHomeAccountHistory.setOnClickListener {
             openAccountBrowseSurface(
-                browseId = ACCOUNT_HISTORY_BROWSE_ID,
+                browseId = YouTubeAccountSurfaces.HISTORY_BROWSE_ID,
                 title = "History",
                 type = YouTubeItemType.SONG
             )
         }
         btnHomeAccountLibrary.setOnClickListener {
-            openAccountBrowseSurface(
-                browseId = ACCOUNT_LIBRARY_BROWSE_ID,
-                title = "Library",
-                type = YouTubeItemType.PLAYLIST
-            )
+            startActivity(YouTubeAccountSurfaces.accountHubIntent(this))
         }
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))

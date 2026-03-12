@@ -147,7 +147,8 @@ class YouTubeBrowseFragment : Fragment() {
             if (loadedItems.isEmpty()) {
                 showState("No items found.")
             } else {
-                showState("Browsing ${browseTypeLabel()}.")
+                val personalized = if (YouTubeAccountStore.read(requireContext()).isLoggedIn) " for your account" else ""
+                showState("Browsing ${browseTypeLabel()}$personalized.")
             }
         }
     }
@@ -169,6 +170,7 @@ class YouTubeBrowseFragment : Fragment() {
                 .distinctBy { it.videoId ?: it.id }
             hydrateBrowseChrome()
             adapter.submit(loadedItems)
+            showState("Loaded ${loadedItems.size} ${browseTypeLabel()} items.")
         }
     }
 
