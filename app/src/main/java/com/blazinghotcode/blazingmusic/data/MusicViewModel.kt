@@ -34,7 +34,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_CURRENT_QUEUE_INDEX = "current_queue_index"
         private const val KEY_CURRENT_POSITION_MS = "current_position_ms"
         private const val KEY_PLAYLISTS_JSON = "playlists_json"
+        private const val KEY_YOUTUBE_LIKED_SONGS_JSON = "youtube_liked_songs_json"
         private const val LOCAL_MUSIC_PLAYLIST_ID = PlaylistSystem.LOCAL_MUSIC_ID
+        private const val YOUTUBE_LIKED_MUSIC_PLAYLIST_ID = PlaylistSystem.YOUTUBE_LIKED_MUSIC_ID
+        private const val YOUTUBE_LIKED_MAX_RESULTS = 500
         private const val PREVIOUS_RESTART_THRESHOLD_MS = 4_000L
         private const val TAG = "MusicViewModel"
     }
@@ -93,8 +96,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var currentQueueIndexInternal = -1
     private var playlistsInternal: List<Playlist> = emptyList()
     private var accountRemotePlaylists: List<Playlist> = emptyList()
+    private var accountLikedSongs: List<Song> = emptyList()
     private var accountRemotePlaylistsFingerprint: String? = null
     private var isRefreshingAccountRemotePlaylists = false
+    private var isRefreshingAccountLikedSongs = false
     private val retryingYouTubeVideoIds = mutableSetOf<String>()
     private val playbackListener = object : Player.Listener {
         override fun onIsPlayingChanged(playing: Boolean) {
@@ -443,8 +448,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addSongToQueue(song: Song) {
+        addSongsToQueue(listOf(song))
+    }
+
+    fun addSongsToQueue(songs: List<Song>) {
+        if (songs.isEmpty()) return
         val mutableQueue = activeQueue.toMutableList()
-        mutableQueue.add(song)
+        mutableQueue.addAll(songs)
         applyQueueMutation(mutableQueue)
     }
 
@@ -576,7 +586,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun renamePlaylist(playlistId: Long, newName: String): Boolean {
-        if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return false
+        val target = playlistsInternal.find { it.id == playlistId } ?: return false
+        if (!target.isEditablePlaylist()) return false
         val trimmed = newName.trim()
         if (trimmed.isEmpty()) return false
         if (playlistsInternal.any { it.id != playlistId && it.name.equals(trimmed, ignoreCase = true) }) {
@@ -594,8 +605,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deletePlaylist(playlistId: Long): Boolean {
-        if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return false
-        if (playlistsInternal.find { it.id == playlistId }?.isRemoteSystemPlaylist() == true) return false
+        val target = playlistsInternal.find { it.id == playlistId } ?: return false
+        if (!target.isEditablePlaylist()) return false
         val beforeSize = playlistsInternal.size
         playlistsInternal = playlistsInternal.filterNot { it.id == playlistId }
         if (playlistsInternal.size == beforeSize) return false
@@ -620,7 +631,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val updatedSongs = target.songs + songsToAdd
         val updatedPlaylist = target.copy(
             songPaths = updatedSongs.map { it.path },
-            songs = updatedSongs
+            songs = updatedSongs,
+            coverArtUri = updatedSongs.firstOrNull()?.albumArtUri ?: target.coverArtUri
         )
         playlistsInternal = playlistsInternal.map {
             if (it.id == playlistId) updatedPlaylist else it
@@ -640,7 +652,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
         val updatedPlaylist = target.copy(
             songPaths = updatedSongs.map { it.path },
-            songs = updatedSongs
+            songs = updatedSongs,
+            coverArtUri = updatedSongs.firstOrNull()?.albumArtUri
         )
         playlistsInternal = playlistsInternal.map {
             if (it.id == playlistId) updatedPlaylist else it
@@ -663,7 +676,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val songsByPath = target.songs.associateBy { it.path }
         val updated = target.copy(
             songPaths = normalized,
-            songs = normalized.mapNotNull { songsByPath[it] }
+            songs = normalized.mapNotNull { songsByPath[it] },
+            coverArtUri = normalized.firstOrNull()?.let { songsByPath[it]?.albumArtUri } ?: target.coverArtUri
         )
         playlistsInternal = playlistsInternal.map {
             if (it.id == playlistId) updated else it
@@ -696,38 +710,115 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
         if (!account.isLoggedIn) {
             accountRemotePlaylists = emptyList()
+            accountLikedSongs = emptyList()
             accountRemotePlaylistsFingerprint = null
+            persistYouTubeLikedSongs(emptyList())
         } else if (fingerprint != accountRemotePlaylistsFingerprint && !isRefreshingAccountRemotePlaylists) {
             isRefreshingAccountRemotePlaylists = true
             viewModelScope.launch {
-                val fetched = runCatching {
-                    youTubeApiClient.browseCollection(
-                        browseId = YouTubeAccountSurfaces.PLAYLISTS_BROWSE_ID,
-                        maxResults = 240
-                    )
-                }.getOrDefault(emptyList())
-
-                accountRemotePlaylists = fetched
-                    .filter { it.type == YouTubeItemType.PLAYLIST && !it.browseId.isNullOrBlank() && it.title.isNotBlank() }
-                    .distinctBy { it.browseId }
-                    .mapIndexed { index, item ->
-                        Playlist(
-                            id = -10_000_000L - index - item.browseId.orEmpty().hashCode().toLong().absoluteValue,
-                            name = item.title,
-                            songPaths = emptyList(),
-                            remoteBrowseId = item.browseId,
-                            remoteBrowseType = YouTubeItemType.PLAYLIST
+                try {
+                    val fetched = runCatching {
+                        youTubeApiClient.browseCollection(
+                            browseId = YouTubeAccountSurfaces.PLAYLISTS_BROWSE_ID,
+                            maxResults = 240
                         )
-                    }
-                accountRemotePlaylistsFingerprint = fingerprint
-                isRefreshingAccountRemotePlaylists = false
-                rebuildSystemPlaylists()
-                _playlists.postValue(playlistsInternal)
+                    }.getOrDefault(emptyList())
+
+                    accountRemotePlaylists = fetched
+                        .filter {
+                            it.type == YouTubeItemType.PLAYLIST &&
+                                !it.browseId.isNullOrBlank() &&
+                                it.title.isNotBlank() &&
+                                !it.browseId.equals(PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID, ignoreCase = true)
+                        }
+                        .distinctBy { it.browseId }
+                        .mapIndexed { index, item ->
+                            Playlist(
+                                id = -10_000_000L - index - item.browseId.orEmpty().hashCode().toLong().absoluteValue,
+                                name = item.title,
+                                songPaths = emptyList(),
+                                coverArtUri = item.thumbnailUrl,
+                                remoteBrowseId = item.browseId,
+                                remoteBrowseType = YouTubeItemType.PLAYLIST
+                            )
+                        }
+                    accountRemotePlaylistsFingerprint = fingerprint
+                    rebuildSystemPlaylists()
+                    _playlists.postValue(playlistsInternal)
+                } finally {
+                    isRefreshingAccountRemotePlaylists = false
+                }
+            }
+        }
+
+        if (account.isLoggedIn && !isRefreshingAccountLikedSongs) {
+            isRefreshingAccountLikedSongs = true
+            viewModelScope.launch {
+                try {
+                    syncYouTubeLikedSongsPlaylist()
+                    rebuildSystemPlaylists()
+                    _playlists.postValue(playlistsInternal)
+                } finally {
+                    isRefreshingAccountLikedSongs = false
+                }
             }
         }
 
         rebuildSystemPlaylists()
         _playlists.value = playlistsInternal
+    }
+
+    private suspend fun syncYouTubeLikedSongsPlaylist() {
+        val fetched = runCatching {
+            youTubeApiClient.browseCollection(
+                browseId = PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID,
+                maxResults = YOUTUBE_LIKED_MAX_RESULTS
+            )
+        }.getOrNull() ?: return
+
+        if (fetched.isEmpty()) {
+            accountLikedSongs = emptyList()
+            persistYouTubeLikedSongs(emptyList())
+            return
+        }
+
+        val existingByVideoId = accountLikedSongs
+            .mapNotNull { song -> song.sourceVideoId?.takeIf { it.isNotBlank() }?.let { it to song } }
+            .toMap()
+            .toMutableMap()
+
+        val syncedSongs = buildList {
+            fetched
+                .asSequence()
+                .mapNotNull { item -> item.videoId?.trim()?.takeIf { it.isNotEmpty() }?.let { it to item } }
+                .distinctBy { it.first }
+                .forEach { (videoId, item) ->
+                    val existing = existingByVideoId[videoId]
+                    val streamUrl = existing?.path?.takeIf { it.isNotBlank() }
+                        ?: runCatching { youTubeApiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull()
+                    if (streamUrl.isNullOrBlank()) return@forEach
+                    add(
+                        Song(
+                            id = existing?.id ?: (-20_000_000L - videoId.hashCode().toLong().absoluteValue),
+                            title = item.title.ifBlank { existing?.title ?: "Unknown title" },
+                            artist = item.channelTitle.ifBlank { existing?.artist ?: "YouTube Music" },
+                            album = existing?.album ?: "YouTube Music",
+                            duration = existing?.duration ?: 0L,
+                            dateAddedSeconds = existing?.dateAddedSeconds ?: 0L,
+                            path = streamUrl,
+                            albumArtUri = item.thumbnailUrl ?: existing?.albumArtUri,
+                            sourceVideoId = videoId,
+                            sourcePlaylistId = item.sourcePlaylistId ?: PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID,
+                            sourcePlaylistSetVideoId = item.sourcePlaylistSetVideoId,
+                            sourceParams = item.sourceParams,
+                            sourceIndex = item.sourceIndex
+                        )
+                    )
+                }
+        }
+
+        accountLikedSongs = syncedSongs
+        persistYouTubeLikedSongs(syncedSongs)
     }
 
     private fun buildShuffledQueue(queue: List<Song>): List<Song> {
@@ -915,9 +1006,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun loadPersistedPlaylists() {
+        accountLikedSongs = loadPersistedYouTubeLikedSongs()
         val raw = prefs.getString(KEY_PLAYLISTS_JSON, null) ?: run {
             playlistsInternal = emptyList()
-            ensureLocalMusicPlaylist()
+            rebuildSystemPlaylists()
             _playlists.value = playlistsInternal
             return
         }
@@ -953,6 +1045,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                             name = name,
                             songPaths = if (songs.isNotEmpty()) songs.map { it.path } else paths,
                             songs = songs,
+                            coverArtUri = json.optString("cover_art_uri", "").ifBlank { songs.firstOrNull()?.albumArtUri },
                             remoteBrowseId = json.optString("remote_browse_id", "").ifBlank { null },
                             remoteBrowseType = YouTubeItemType.entries.getOrNull(
                                 json.optInt("remote_browse_type", YouTubeItemType.UNKNOWN.ordinal)
@@ -978,6 +1071,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 .put("name", playlist.name)
                 .put("song_paths", JSONArray(playlist.songPaths))
                 .put("songs", JSONArray().apply { playlist.songs.forEach { put(songToJson(it)) } })
+                .put("cover_art_uri", playlist.coverArtUri)
                 .put("remote_browse_id", playlist.remoteBrowseId)
                 .put("remote_browse_type", playlist.remoteBrowseType.ordinal)
             jsonArray.put(playlistJson)
@@ -988,12 +1082,49 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             .commit()
     }
 
+    private fun loadPersistedYouTubeLikedSongs(): List<Song> {
+        val raw = prefs.getString(KEY_YOUTUBE_LIKED_SONGS_JSON, null) ?: return emptyList()
+        return runCatching {
+            val jsonArray = JSONArray(raw)
+            buildList {
+                for (index in 0 until jsonArray.length()) {
+                    val songJson = jsonArray.optJSONObject(index) ?: continue
+                    songFromJson(songJson)?.let(::add)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun persistYouTubeLikedSongs(songs: List<Song>) {
+        val jsonArray = JSONArray().apply {
+            songs.forEach { song ->
+                put(songToJson(song))
+            }
+        }
+        prefs.edit()
+            .putString(KEY_YOUTUBE_LIKED_SONGS_JSON, jsonArray.toString())
+            .commit()
+    }
+
+    private fun youtubeLikedMusicPlaylist(): Playlist {
+        val songs = accountLikedSongs
+        return Playlist(
+            id = YOUTUBE_LIKED_MUSIC_PLAYLIST_ID,
+            name = PlaylistSystem.YOUTUBE_LIKED_MUSIC_NAME,
+            songPaths = songs.map { it.path },
+            songs = songs,
+            coverArtUri = songs.firstOrNull()?.albumArtUri
+        )
+    }
+
     private fun ensureLocalMusicPlaylist() {
         val localPaths = (_songs.value ?: normalQueue).map { it.path }.distinct()
+        val localSongs = (_songs.value ?: normalQueue).distinctBy { it.path }
         val localPlaylist = Playlist(
             id = LOCAL_MUSIC_PLAYLIST_ID,
             name = PlaylistSystem.LOCAL_MUSIC_NAME,
-            songPaths = localPaths
+            songPaths = localPaths,
+            coverArtUri = localSongs.firstOrNull()?.albumArtUri
         )
         val others = playlistsInternal.filterNot { it.id == LOCAL_MUSIC_PLAYLIST_ID }
         playlistsInternal = listOf(localPlaylist) + others
@@ -1005,6 +1136,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val custom = playlistsInternal.filter { it.id > 0L }.sortedByDescending { it.id }
         val system = mutableListOf(playlistsInternal.first { it.id == LOCAL_MUSIC_PLAYLIST_ID })
         if (account.isLoggedIn) {
+            system += youtubeLikedMusicPlaylist()
             system += accountRemotePlaylists
         }
         playlistsInternal = system + custom

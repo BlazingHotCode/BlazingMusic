@@ -323,13 +323,18 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     }
 
     private fun showSongOptionsMenu(song: Song, anchor: View) {
+        val canEditCurrentPlaylist = viewModel.playlists.value.orEmpty()
+            .firstOrNull { it.id == playlistId }
+            ?.isEditablePlaylist() == true
         androidx.appcompat.widget.PopupMenu(
             ContextThemeWrapper(requireContext(), R.style.ThemeOverlay_BlazingMusic_PopupMenu),
             anchor
         ).apply {
             menu.add(Menu.NONE, 1, Menu.NONE, "Play next")
             menu.add(Menu.NONE, 2, Menu.NONE, "Add to queue")
-            menu.add(Menu.NONE, 3, Menu.NONE, "Remove from playlist")
+            if (canEditCurrentPlaylist) {
+                menu.add(Menu.NONE, 3, Menu.NONE, "Remove from playlist")
+            }
             menu.add(Menu.NONE, 4, Menu.NONE, "Select multiple")
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
@@ -358,7 +363,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     }
 
     private fun showAddMultipleSongsToPlaylistDialog(selectedSongs: List<Song>) {
-        val playlists = viewModel.playlists.value.orEmpty()
+        val playlists = viewModel.playlists.value.orEmpty().filter { it.isEditablePlaylist() }
         if (playlists.isEmpty()) {
             showToast("No playlists yet")
             return
@@ -457,6 +462,9 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
     private fun showPlaylistSelectionActions() {
         val selectedSongs = songAdapter.getSelectedSongs()
+        val canEditCurrentPlaylist = viewModel.playlists.value.orEmpty()
+            .firstOrNull { it.id == playlistId }
+            ?.isEditablePlaylist() == true
         if (selectedSongs.isEmpty()) {
             showToast("No songs selected")
             songAdapter.exitSelectionMode()
@@ -469,7 +477,9 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             menu.add(Menu.NONE, 1, Menu.NONE, "Add to queue")
             menu.add(Menu.NONE, 2, Menu.NONE, "Play next")
             menu.add(Menu.NONE, 3, Menu.NONE, "Add to playlist")
-            menu.add(Menu.NONE, 4, Menu.NONE, "Remove")
+            if (canEditCurrentPlaylist) {
+                menu.add(Menu.NONE, 4, Menu.NONE, "Remove")
+            }
             menu.add(Menu.NONE, 5, Menu.NONE, "Cancel selection")
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
@@ -613,6 +623,10 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
     private fun canDragCustomOrder(): Boolean {
         if (currentSongSort != PlaylistSongSortOption.CUSTOM) return false
+        val canEditCurrentPlaylist = viewModel.playlists.value.orEmpty()
+            .firstOrNull { it.id == playlistId }
+            ?.isEditablePlaylist() == true
+        if (!canEditCurrentPlaylist) return false
         if (songAdapter.isSelectionMode()) return false
         if (etSearchSongs.text?.isNotBlank() == true) return false
         return filteredSongs.size > 1

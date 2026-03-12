@@ -484,7 +484,7 @@ class MainActivity : AppCompatActivity() {
 
     fun appendSongsToCurrentQueue(songs: List<Song>) {
         if (songs.isEmpty()) return
-        songs.forEach { viewModel.addSongToQueue(it) }
+        viewModel.addSongsToQueue(songs)
     }
 
     fun addSongToCurrentQueue(song: Song) {

@@ -44,6 +44,7 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     private lateinit var tvTitle: TextView
     private lateinit var etSearchPlaylists: EditText
     private lateinit var btnCreatePlaylist: View
+    private lateinit var btnSyncLikedMusic: Button
     private lateinit var btnBack: ImageButton
     private lateinit var playlistAdapter: PlaylistAdapter
     private var allPlaylists: List<Playlist> = emptyList()
@@ -66,6 +67,7 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
         tvTitle = root.findViewById(R.id.tvTitle)
         etSearchPlaylists = root.findViewById(R.id.etSearchPlaylists)
         btnCreatePlaylist = root.findViewById(R.id.btnCreatePlaylist)
+        btnSyncLikedMusic = root.findViewById(R.id.btnSyncLikedMusic)
         btnBack = root.findViewById(R.id.btnBack)
 
         applyHeaderTitleSizing(tvTitle)
@@ -138,6 +140,10 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     private fun setupActions() {
         btnBack.setOnClickListener { (activity as? MainActivity)?.openHomeTab() }
         btnCreatePlaylist.setOnClickListener { showCreatePlaylistDialog() }
+        btnSyncLikedMusic.setOnClickListener {
+            viewModel.refreshSpecialPlaylists()
+            showToast("Syncing liked music from YouTube...")
+        }
         etSearchPlaylists.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}

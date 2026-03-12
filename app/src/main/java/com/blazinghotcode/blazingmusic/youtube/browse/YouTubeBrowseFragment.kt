@@ -189,11 +189,22 @@ class YouTubeBrowseFragment : Fragment() {
             SharedPlayer.getOrCreate(requireContext()).pause()
             showState("Loading queue...")
 
-            val sourceSignature = playableItems.joinToString("|") { it.id }
-            val resolvedSongs = if (cachedQueueSignature == sourceSignature && cachedResolvedQueue.isNotEmpty()) {
+            val modePrefix = if (shuffle) "shuffle" else "ordered"
+            val sourceSignature = "$modePrefix|" + playableItems.joinToString("|") { it.id }
+            val usedCache = cachedQueueSignature == sourceSignature && cachedResolvedQueue.isNotEmpty()
+            val resolvedSongs = if (usedCache) {
                 cachedResolvedQueue
             } else {
-                val resolved = resolveSongsInParallel(playableItems)
+                val orderedItems = if (shuffle) {
+                    playableItems.shuffled(Random(System.currentTimeMillis()))
+                } else {
+                    playableItems
+                }
+                val resolved = buildQueueProgressively(
+                    orderedItems = orderedItems,
+                    sourceSignature = sourceSignature,
+                    loadingLabel = "queue"
+                )
                 cachedQueueSignature = sourceSignature
                 cachedResolvedQueue = resolved
                 resolved
@@ -204,13 +215,10 @@ class YouTubeBrowseFragment : Fragment() {
                 return@launch
             }
 
-            val finalQueue = if (shuffle) {
-                resolvedSongs.shuffled(Random(System.currentTimeMillis()))
-            } else {
-                resolvedSongs
+            if (usedCache) {
+                (activity as? MainActivity)?.playTemporaryQueue(resolvedSongs, 0)
+                showState("Queue ready.")
             }
-            (activity as? MainActivity)?.playTemporaryQueue(finalQueue, 0)
-            showState(if (shuffle) "Starting shuffled playback..." else "Starting playback...")
         }
     }
 
@@ -253,6 +261,7 @@ class YouTubeBrowseFragment : Fragment() {
                 val total = remainingItems.size
                 var loaded = 0
                 var playableLoaded = 0
+                val appendBuffer = mutableListOf<Song>()
                 showState("Playing now. Building shuffle queue 0/$total...")
 
                 remainingItems.forEach { item ->
@@ -260,9 +269,17 @@ class YouTubeBrowseFragment : Fragment() {
                     val playableSong = resolvePlayableSong(item)
                     if (playableSong != null) {
                         playableLoaded += 1
-                        (activity as? MainActivity)?.appendSongsToCurrentQueue(listOf(playableSong))
+                        appendBuffer += playableSong
+                        if (appendBuffer.size >= QUEUE_APPEND_BATCH_SIZE) {
+                            (activity as? MainActivity)?.appendSongsToCurrentQueue(appendBuffer.toList())
+                            appendBuffer.clear()
+                        }
                     }
                     showState("Playing now. Building shuffle queue $loaded/$total...")
+                }
+
+                if (appendBuffer.isNotEmpty()) {
+                    (activity as? MainActivity)?.appendSongsToCurrentQueue(appendBuffer.toList())
                 }
 
                 showState("Artist shuffle ready. Added $playableLoaded songs.")
@@ -512,19 +529,53 @@ class YouTubeBrowseFragment : Fragment() {
                 return@launch
             }
 
-            val resolvedSongs = resolveSongsInParallel(albumItems)
+            val tappedIndex = albumItems.indexOfFirst { it.videoId == tappedItem.videoId }.coerceAtLeast(0)
+            val orderedItems = albumItems.drop(tappedIndex) + albumItems.take(tappedIndex)
+            val sourceSignature = orderedItems.joinToString("|") { it.id }
+            val resolvedSongs = buildQueueProgressively(
+                orderedItems = orderedItems,
+                sourceSignature = sourceSignature,
+                loadingLabel = "album queue"
+            )
             if (resolvedSongs.isEmpty()) {
                 showToast("Could not start album playback")
                 showState("Unable to resolve playable album songs.")
                 return@launch
             }
-
-            val startIndex = albumItems.indexOfFirst { it.videoId == tappedItem.videoId }
-                .coerceAtLeast(0)
-                .coerceAtMost(resolvedSongs.lastIndex)
-            (activity as? MainActivity)?.playTemporaryQueue(resolvedSongs, startIndex)
-            showState("Starting album playback...")
+            showState("Album queue ready.")
         }
+    }
+
+    private suspend fun buildQueueProgressively(
+        orderedItems: List<YouTubeVideo>,
+        sourceSignature: String,
+        loadingLabel: String
+    ): List<Song> {
+        val firstResolved = resolveFirstPlayableSong(orderedItems) ?: return emptyList()
+        val (firstItem, firstSong) = firstResolved
+        val builtQueue = mutableListOf(firstSong)
+        (activity as? MainActivity)?.playTemporaryQueue(builtQueue, 0)
+
+        val remaining = orderedItems.filterNot {
+            it.videoId == firstItem.videoId && it.id == firstItem.id
+        }
+        if (remaining.isEmpty()) return builtQueue
+
+        var processed = 0
+        val total = remaining.size
+        for (chunk in remaining.chunked(QUEUE_APPEND_BATCH_SIZE)) {
+            val resolvedChunk = resolveSongsInParallel(chunk)
+            processed += chunk.size
+            if (resolvedChunk.isNotEmpty()) {
+                builtQueue += resolvedChunk
+                (activity as? MainActivity)?.appendSongsToCurrentQueue(resolvedChunk)
+            }
+            showState("Playing now. Building $loadingLabel $processed/$total...")
+        }
+
+        cachedQueueSignature = sourceSignature
+        cachedResolvedQueue = builtQueue.toList()
+        return builtQueue
     }
 
     private fun albumSongItemsForQueue(tappedItem: YouTubeVideo): List<YouTubeVideo> {
@@ -787,6 +838,7 @@ class YouTubeBrowseFragment : Fragment() {
 
     companion object {
         private const val MENU_OPEN_BROWSE = 1
+        private const val QUEUE_APPEND_BATCH_SIZE = 8
         private const val RADIO_INITIAL_READY = 10
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60

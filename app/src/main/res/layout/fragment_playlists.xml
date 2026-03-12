@@ -56,6 +56,20 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/tvSubtitle" />
 
+    <Button
+        android:id="@+id/btnSyncLikedMusic"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/bg_secondary_action_button"
+        android:text="Sync likes"
+        android:textAllCaps="false"
+        android:textColor="@color/text_primary"
+        app:layout_constraintBottom_toBottomOf="@id/tvSubtitle"
+        app:layout_constraintEnd_toStartOf="@id/btnCreatePlaylist"
+        app:layout_constraintTop_toTopOf="@id/tvSubtitle" />
+
     <TextView
         android:id="@+id/tvSubtitle"
         android:layout_width="0dp"
@@ -68,7 +82,7 @@
         android:text="Your saved collections"
         android:textColor="@color/text_muted"
         android:textSize="12sp"
-        app:layout_constraintEnd_toStartOf="@id/btnCreatePlaylist"
+        app:layout_constraintEnd_toStartOf="@id/btnSyncLikedMusic"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnBack" />
 
@@ -77,7 +91,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         app:barrierDirection="bottom"
-        app:constraint_referenced_ids="tvSubtitle,btnCreatePlaylist" />
+        app:constraint_referenced_ids="tvSubtitle,btnCreatePlaylist,btnSyncLikedMusic" />
 
     <EditText
         android:id="@+id/etSearchPlaylists"
