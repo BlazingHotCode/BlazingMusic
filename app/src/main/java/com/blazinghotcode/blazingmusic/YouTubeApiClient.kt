@@ -739,7 +739,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             return playableUrl
         }
 
-        val cipher = chosen.optString("signatureCipher", "").trim()
+        val cipher = chosen.optString("signatureCipher", chosen.optString("cipher", "")).trim()
         if (cipher.isNotEmpty()) {
             val params = parseUrlEncodedParams(cipher)
             val cipherUrl = params["url"].orEmpty().trim()
