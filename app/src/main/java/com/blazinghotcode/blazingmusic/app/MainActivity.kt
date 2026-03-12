@@ -1121,7 +1121,8 @@ class MainActivity : AppCompatActivity() {
         openAccountBrowseSurface(
             browseId = browseId,
             title = playlist.name,
-            type = playlist.remoteBrowseType
+            type = playlist.remoteBrowseType,
+            rootTab = BottomTab.PLAYLISTS
         )
     }
 
@@ -1574,9 +1575,10 @@ class MainActivity : AppCompatActivity() {
     private fun openAccountBrowseSurface(
         browseId: String,
         title: String,
-        type: YouTubeItemType
+        type: YouTubeItemType,
+        rootTab: BottomTab = BottomTab.HOME
     ) {
-        youtubeRootTab = BottomTab.HOME
+        youtubeRootTab = rootTab
         openYouTubeBrowse(
             YouTubeVideo(
                 id = "account:$browseId",

@@ -758,7 +758,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         if (videoId in pendingLikeRequests) return false
 
         val previousSongs = accountLikedSongs
-        val existingLikedSong = previousSongs.firstOrNull { it.sourceVideoId == videoId }
         val normalizedSong = normalizedLikedSong(song)
         accountLikedSongs = when {
             liked -> listOf(normalizedSong) + accountLikedSongs.filterNot { it.sourceVideoId == videoId }
@@ -769,20 +768,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             val success = runCatching {
-                if (liked) {
-                    youTubeApiClient.addVideoToPlaylist(PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID, videoId)
-                } else {
-                    val setVideoId = existingLikedSong?.sourcePlaylistSetVideoId.orEmpty()
-                    if (setVideoId.isBlank()) {
-                        false
-                    } else {
-                        youTubeApiClient.removeFromPlaylist(
-                            PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID,
-                            videoId,
-                            setVideoId
-                        )
-                    }
-                }
+                youTubeApiClient.likeVideo(videoId, liked)
             }.getOrDefault(false)
             pendingLikeRequests.remove(videoId)
             if (!success) {
@@ -879,8 +865,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun syncYouTubeLikedSongsPlaylist() {
         val fetched = runCatching {
-            youTubeApiClient.browseCollection(
-                browseId = "VL${PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID}",
+            youTubeApiClient.playlistItemsCompleted(
+                playlistId = PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID,
                 maxResults = YOUTUBE_LIKED_MAX_RESULTS
             )
         }.getOrNull() ?: return
