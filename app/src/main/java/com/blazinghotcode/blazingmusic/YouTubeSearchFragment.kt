@@ -56,6 +56,7 @@ class YouTubeSearchFragment : Fragment() {
     private var activeJob: Job? = null
     private var inputJob: Job? = null
     private var selectedFilter: YouTubeSearchFilter = YouTubeSearchFilter.ALL
+    private var latestSuggestions: List<String> = emptyList()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -90,7 +91,8 @@ class YouTubeSearchFragment : Fragment() {
     fun handleBackNavigation(): Boolean {
         val hasQuery = etQuery.text?.toString().orEmpty().isNotBlank()
         val hasResults = adapter.itemCount > 0
-        if (!hasQuery && !hasResults) return false
+        val hasSuggestions = chipGroupRecentSearches.childCount > 0
+        if (!hasQuery && !hasResults && !hasSuggestions) return false
         clearSearchSurface()
         return true
     }
@@ -172,6 +174,7 @@ class YouTubeSearchFragment : Fragment() {
 
     private fun scheduleReactiveSearch() {
         inputJob?.cancel()
+        activeJob?.cancel()
         val query = etQuery.text?.toString().orEmpty().trim()
         if (query.isEmpty()) {
             clearSearchSurface(preserveQuery = false)
@@ -179,7 +182,35 @@ class YouTubeSearchFragment : Fragment() {
         }
         inputJob = viewLifecycleOwner.lifecycleScope.launch {
             delay(260L)
-            runSearch(triggeredByUser = false)
+            loadSuggestions(query)
+        }
+    }
+
+    private fun loadSuggestions(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            latestSuggestions = emptyList()
+            bindRecentSearchChips()
+            return
+        }
+        updateBrowseUiState()
+        adapter.clear()
+        showState("Loading suggestions...")
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            val suggestions = runCatching {
+                apiClient.searchSuggestions(trimmed)
+            }.getOrDefault(emptyList())
+            latestSuggestions = suggestions
+            bindRecentSearchChips()
+            showState(
+                if (suggestions.isEmpty()) {
+                    "Press search to see full results."
+                } else {
+                    "Tap a suggestion or press search."
+                }
+            )
+            updateSuggestionVisibility(trimmed)
         }
     }
 
@@ -204,6 +235,7 @@ class YouTubeSearchFragment : Fragment() {
             }.getOrElse {
                 emptyList()
             }
+            latestSuggestions = emptyList()
             adapter.submitResults(results, grouped = selectedFilter == YouTubeSearchFilter.ALL)
             YouTubeSearchHistoryStore.save(requireContext(), query)
             bindRecentSearchChips()
@@ -213,7 +245,7 @@ class YouTubeSearchFragment : Fragment() {
                 val prefix = if (triggeredByUser) "Showing" else "Updated"
                 showState("$prefix ${selectedFilter.displayName.lowercase()} results.")
             }
-            updateRecentSearchVisibility(query)
+            updateSuggestionVisibility(query)
         }
     }
 
@@ -238,18 +270,25 @@ class YouTubeSearchFragment : Fragment() {
 
     private fun bindRecentSearchChips() {
         val context = context ?: return
-        val recentQueries = YouTubeSearchHistoryStore.load(context)
+        val query = etQuery.text?.toString().orEmpty().trim()
+        val chipValues = if (query.isBlank()) {
+            tvRecentSearchesLabel.text = "Recent searches"
+            YouTubeSearchHistoryStore.load(context)
+        } else {
+            tvRecentSearchesLabel.text = "Suggestions"
+            latestSuggestions
+        }
         chipGroupRecentSearches.removeAllViews()
-        recentQueries.forEach { query ->
-            val chip = buildChip(query, isCheckable = false)
+        chipValues.forEach { value ->
+            val chip = buildChip(value, isCheckable = false)
             chip.setOnClickListener {
-                etQuery.setText(query)
-                etQuery.setSelection(query.length)
+                etQuery.setText(value)
+                etQuery.setSelection(value.length)
                 runSearch(triggeredByUser = true)
             }
             chipGroupRecentSearches.addView(chip)
         }
-        updateRecentSearchVisibility(etQuery.text?.toString().orEmpty())
+        updateSuggestionVisibility(query)
     }
 
     private fun refreshFilterChipChecks() {
@@ -259,8 +298,8 @@ class YouTubeSearchFragment : Fragment() {
         }
     }
 
-    private fun updateRecentSearchVisibility(query: String) {
-        val show = query.trim().isBlank() && chipGroupRecentSearches.childCount > 0
+    private fun updateSuggestionVisibility(query: String) {
+        val show = chipGroupRecentSearches.childCount > 0
         tvRecentSearchesLabel.visibility = if (show) View.VISIBLE else View.GONE
         chipGroupRecentSearches.visibility = if (show) View.VISIBLE else View.GONE
     }
@@ -281,6 +320,7 @@ class YouTubeSearchFragment : Fragment() {
         if (!preserveQuery) {
             etQuery.text?.clear()
         }
+        latestSuggestions = emptyList()
         adapter.clear()
         updateBrowseUiState()
         bindRecentSearchChips()
@@ -346,7 +386,7 @@ class YouTubeSearchFragment : Fragment() {
         btnSearch.visibility = View.VISIBLE
         chipGroupSearchFilters.visibility = View.VISIBLE
         browseHeaderContainer.visibility = View.GONE
-        updateRecentSearchVisibility(etQuery.text?.toString().orEmpty())
+        updateSuggestionVisibility(etQuery.text?.toString().orEmpty())
     }
 
     private fun playInApp(item: YouTubeVideo) {

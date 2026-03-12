@@ -1,5 +1,7 @@
 package com.blazinghotcode.blazingmusic
 
+import android.text.TextUtils
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -335,6 +337,12 @@ class YouTubeBrowseAdapter(
             btnArtistShuffle.setOnClickListener { onPlayAllClick(true) }
             btnArtistPageOptions.setOnClickListener { onArtistOptionsClick() }
 
+            fitButtonTextSingleLine(btnPlayAll)
+            fitButtonTextSingleLine(btnRadioAll)
+            fitButtonTextSingleLine(btnShuffleAll)
+            fitButtonTextSingleLine(btnArtistRadio)
+            fitButtonTextSingleLine(btnArtistShuffle)
+
             val description = model.artistInfo?.description?.takeIf { it.isNotBlank() }
             val subscribers = model.artistInfo?.subscriberCount?.takeIf { it.isNotBlank() }
             val monthly = model.artistInfo?.monthlyListeners?.takeIf { it.isNotBlank() }
@@ -352,6 +360,37 @@ class YouTubeBrowseAdapter(
                     tvArtistMonthlyListeners.visibility == View.VISIBLE
                 )
             aboutContainer.visibility = if (hasAbout) View.VISIBLE else View.GONE
+        }
+
+        private fun fitButtonTextSingleLine(button: Button) {
+            button.isSingleLine = true
+            button.ellipsize = TextUtils.TruncateAt.END
+            button.post {
+                val available = button.width - button.paddingLeft - button.paddingRight
+                if (available <= 0) return@post
+                val label = button.text?.toString().orEmpty()
+                if (label.isEmpty()) return@post
+                val minSp = 10f
+                val maxSp = 14f
+                var low = minSp
+                var high = maxSp
+                var best = minSp
+                repeat(8) {
+                    val mid = (low + high) / 2f
+                    button.paint.textSize = TypedValue.applyDimension(
+                        TypedValue.COMPLEX_UNIT_SP,
+                        mid,
+                        button.resources.displayMetrics
+                    )
+                    if (button.paint.measureText(label) <= available) {
+                        best = mid
+                        low = mid
+                    } else {
+                        high = mid
+                    }
+                }
+                button.setTextSize(TypedValue.COMPLEX_UNIT_SP, best)
+            }
         }
     }
 

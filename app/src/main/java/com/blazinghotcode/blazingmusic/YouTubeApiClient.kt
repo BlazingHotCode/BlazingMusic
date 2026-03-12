@@ -81,6 +81,39 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         ).items
     }
 
+    suspend fun searchSuggestions(query: String, maxResults: Int = 8): List<String> {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val encoded = URLEncoder.encode(trimmed, "UTF-8")
+                val url = URL("https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=$encoded")
+                val connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 10_000
+                    readTimeout = 10_000
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("User-Agent", USER_AGENT_WEB)
+                }
+                try {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONArray(response)
+                    val suggestions = json.optJSONArray(1) ?: JSONArray()
+                    buildList {
+                        for (index in 0 until suggestions.length()) {
+                            val suggestion = suggestions.optString(index, "").trim()
+                            if (suggestion.isNotEmpty()) add(suggestion)
+                        }
+                    }
+                        .distinctBy { it.lowercase() }
+                        .take(maxResults.coerceIn(1, 20))
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrDefault(emptyList())
+        }
+    }
+
     suspend fun browseCollectionPage(
         browseId: String,
         params: String? = null,
