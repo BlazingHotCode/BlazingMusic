@@ -314,6 +314,25 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun playShuffledQueue(queueSource: List<Song>) {
+        val baseQueue = queueSource.distinctBy { it.path }
+        if (baseQueue.isEmpty()) return
+
+        normalQueue = baseQueue
+        activeQueue = baseQueue.shuffled()
+        _queue.value = activeQueue
+
+        currentQueueIndexInternal = 0
+        _currentQueueIndex.value = 0
+        _shouldRestartQueue.value = false
+        _currentSong.value = activeQueue.first()
+        persistQueueState(positionOverrideMs = 0L)
+        viewModelScope.launch {
+            resolveDeferredQueueSongIfNeeded(0)
+            startPlayback()
+        }
+    }
+
     private fun startPlayback() {
         bindToSharedPlayer().let { player ->
             val mediaItems = activeQueue.map { mediaItemForSong(it) }
@@ -889,15 +908,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 .distinctBy { it.first }
                 .forEach { (videoId, item) ->
                     val existing = existingByVideoId[videoId]
-                    val streamUrl = existing?.path?.takeIf { it.isNotBlank() }
-                        ?: runCatching { youTubeApiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull()
+                    val streamUrl = existing?.path
+                        ?.takeIf { it.isNotBlank() && !isDeferredYouTubePath(it) }
                     add(
                         Song(
                             id = existing?.id ?: (-20_000_000L - videoId.hashCode().toLong().absoluteValue),
                             title = item.title.ifBlank { existing?.title ?: "Unknown title" },
                             artist = item.channelTitle.ifBlank { existing?.artist ?: "YouTube Music" },
                             album = existing?.album ?: "YouTube Music",
-                            duration = existing?.duration ?: 0L,
+                            duration = existing?.duration ?: item.durationMs ?: 0L,
                             dateAddedSeconds = existing?.dateAddedSeconds ?: 0L,
                             path = streamUrl ?: placeholderYouTubeSongPath(videoId),
                             albumArtUri = item.thumbnailUrl ?: existing?.albumArtUri,
