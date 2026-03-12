@@ -126,7 +126,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Recent searches and online shelves inspired by Metrolist"
+            android:text="Recent searches, refreshable shelves, and faster online discovery"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 

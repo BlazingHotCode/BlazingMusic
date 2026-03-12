@@ -137,6 +137,7 @@ class MainActivity : AppCompatActivity() {
     private var homeFeedItems: List<YouTubeVideo> = emptyList()
     private var homeFeedErrorMessage: String? = null
     private var isHomeFeedLoading = false
+    private var homeFeedLastUpdatedLabel: String? = null
     private val sortPrefs by lazy {
         getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -1271,6 +1272,7 @@ class MainActivity : AppCompatActivity() {
         if (homeFeedItems.isNotEmpty()) {
             homeStateContainer.visibility = View.GONE
             rvSongs.visibility = View.VISIBLE
+            bindHomeFeedHeader()
             homeFeedAdapter.submit(homeFeedItems)
             refreshHomeDiscovery()
             return
@@ -1601,6 +1603,15 @@ class MainActivity : AppCompatActivity() {
             isHomeFeedLoading = false
             homeFeedItems = result.getOrDefault(emptyList())
                 .filterNot { it.title.isBlank() }
+                .filterNot { item ->
+                    val section = item.sectionTitle.orEmpty().lowercase()
+                    section.contains("community") || section.contains("podcast")
+                }
+            homeFeedLastUpdatedLabel = if (homeFeedItems.isNotEmpty()) {
+                "Updated ${currentHomeRefreshLabel()}"
+            } else {
+                null
+            }
             homeFeedErrorMessage = if (homeFeedItems.isEmpty()) {
                 result.exceptionOrNull()?.message ?: "No home sections are available right now."
             } else {
@@ -1608,6 +1619,49 @@ class MainActivity : AppCompatActivity() {
             }
             updateHomeLibraryStateUi()
         }
+    }
+
+    private fun bindHomeFeedHeader() {
+        val subtitle = buildString {
+            append("Online shelves")
+            homeFeedLastUpdatedLabel?.let {
+                append(" • ")
+                append(it)
+            }
+        }
+        homeFeedAdapter.setHeader(
+            YouTubeBrowseAdapter.HeaderModel(
+                browseType = YouTubeItemType.UNKNOWN,
+                title = greetingTitle(),
+                subtitle = subtitle,
+                artworkUrl = homeFeedItems.firstNotNullOfOrNull { it.thumbnailUrl },
+                stateMessage = "Quick picks, albums, playlists, and mixes from your online home.",
+                artistInfo = null,
+                showArtistDescription = false,
+                showArtistSubscribers = false,
+                showArtistMonthlyListeners = false,
+                canPlay = false,
+                canShuffle = false
+            )
+        )
+    }
+
+    private fun greetingTitle(): String {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        return when (hour) {
+            in 5..11 -> "Good morning"
+            in 12..17 -> "Good afternoon"
+            else -> "Good evening"
+        }
+    }
+
+    private fun currentHomeRefreshLabel(): String {
+        val now = java.util.Calendar.getInstance()
+        val hour = now.get(java.util.Calendar.HOUR)
+            .let { if (it == 0) 12 else it }
+        val minute = now.get(java.util.Calendar.MINUTE).toString().padStart(2, '0')
+        val suffix = if (now.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM) "AM" else "PM"
+        return "$hour:$minute $suffix"
     }
 
     private fun onHomeFeedItemClicked(item: YouTubeVideo) {
