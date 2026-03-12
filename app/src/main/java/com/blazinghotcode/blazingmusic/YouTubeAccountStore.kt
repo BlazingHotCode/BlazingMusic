@@ -29,6 +29,11 @@ object YouTubeAccountStore {
             dataSyncId = prefs.getString(KEY_DATA_SYNC_ID, "").orEmpty(),
             accountName = prefs.getString(KEY_ACCOUNT_NAME, "").orEmpty(),
             avatarUrl = prefs.getString(KEY_ACCOUNT_AVATAR_URL, "").orEmpty()
+                .takeIf {
+                    it.contains("googleusercontent.com", ignoreCase = true) ||
+                        it.contains("ggpht.com", ignoreCase = true)
+                }
+                .orEmpty()
         )
     }
 

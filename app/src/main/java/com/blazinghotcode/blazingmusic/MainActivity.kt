@@ -54,6 +54,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import coil.load
 import coil.transform.RoundedCornersTransformation
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -76,6 +77,7 @@ class MainActivity : AppCompatActivity() {
         private const val EXTRA_OPEN_ACCOUNT_BROWSE_ID = "open_account_browse_id"
         private const val EXTRA_OPEN_ACCOUNT_TITLE = "open_account_title"
         private const val EXTRA_OPEN_ACCOUNT_TYPE = "open_account_type"
+        private const val EXTRA_OPEN_PLAYLISTS_TAB = "open_playlists_tab"
         private const val MENU_PLAY_NOW = 2001
         private const val MENU_PLAY_NEXT = 2002
         private const val MENU_ADD_QUEUE = 2003
@@ -91,6 +93,12 @@ class MainActivity : AppCompatActivity() {
                 .putExtra(EXTRA_OPEN_ACCOUNT_BROWSE_ID, browseId)
                 .putExtra(EXTRA_OPEN_ACCOUNT_TITLE, title)
                 .putExtra(EXTRA_OPEN_ACCOUNT_TYPE, type.ordinal)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+
+        fun playlistsTabIntent(context: Context): Intent {
+            return Intent(context, MainActivity::class.java)
+                .putExtra(EXTRA_OPEN_PLAYLISTS_TAB, true)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
     }
@@ -159,6 +167,7 @@ class MainActivity : AppCompatActivity() {
     private var isHomeFeedLoading = false
     private var homeFeedLastUpdatedLabel: String? = null
     private var lastHomeAccountFingerprint: String? = null
+    private var isRefreshingAccountProfile = false
     private val sortPrefs by lazy {
         getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -222,6 +231,7 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         setupBackNavigation()
         checkPermissions()
+        handleOpenPlaylistsIntent(intent)
         handleAccountBrowseIntent(intent)
         handlePlaybackActionIntent(intent)
     }
@@ -238,6 +248,7 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleOpenPlaylistsIntent(intent)
         handleAccountBrowseIntent(intent)
         handlePlaybackActionIntent(intent)
     }
@@ -882,15 +893,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAddMultipleSongsToPlaylistDialog(selectedSongs: List<Song>) {
-        if (playlists.isEmpty()) {
+        val editablePlaylists = playlists.filter { it.isEditablePlaylist() }
+        if (editablePlaylists.isEmpty()) {
             showToast("No playlists yet")
             return
         }
         showSimpleBottomSheet(
             title = "Add ${selectedSongs.size} songs to playlist",
-            items = playlists.map { it.name }
+            items = editablePlaylists.map { it.name }
         ) { index ->
-            val playlist = playlists.getOrNull(index) ?: return@showSimpleBottomSheet
+            val playlist = editablePlaylists.getOrNull(index) ?: return@showSimpleBottomSheet
             val addedCount = viewModel.addSongsToPlaylist(playlist.id, selectedSongs)
             if (addedCount > 0) {
                 showToast("Added $addedCount songs to ${playlist.name}")
@@ -926,7 +938,9 @@ class MainActivity : AppCompatActivity() {
         }
         showSimpleBottomSheet(
             title = "Playlists",
-            items = playlists.map { "${it.name} (${it.songPaths.size})" },
+            items = playlists.map { playlist ->
+                if (playlist.isRemoteSystemPlaylist()) playlist.name else "${playlist.name} (${playlist.songPaths.size})"
+            },
             primaryLabel = "Create",
             onPrimaryClick = { showCreatePlaylistDialog() }
         ) { index ->
@@ -936,7 +950,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPlaylistActionsDialog(playlist: Playlist) {
-        val actions = if (playlist.isLocalMusicSystemPlaylist()) {
+        val actions = if (playlist.isRemoteSystemPlaylist()) {
+            arrayOf("Open")
+        } else if (playlist.isLocalMusicSystemPlaylist()) {
             arrayOf("View songs")
         } else {
             arrayOf("View songs", "Add songs", "Rename", "Delete")
@@ -948,16 +964,20 @@ class MainActivity : AppCompatActivity() {
             onSecondaryClick = { showPlaylistBrowserDialog() }
         ) { index ->
             when (index) {
-                0 -> showPlaylistSongsDialog(playlist.id)
-                1 -> if (!playlist.isLocalMusicSystemPlaylist()) showAddSongsToPlaylistDialog(playlist.id)
-                2 -> if (!playlist.isLocalMusicSystemPlaylist()) showRenamePlaylistDialog(playlist)
-                3 -> if (!playlist.isLocalMusicSystemPlaylist()) showDeletePlaylistDialog(playlist)
+                0 -> if (playlist.isRemoteSystemPlaylist()) openRemotePlaylistSurface(playlist) else showPlaylistSongsDialog(playlist.id)
+                1 -> if (playlist.isEditablePlaylist()) showAddSongsToPlaylistDialog(playlist.id)
+                2 -> if (playlist.isEditablePlaylist()) showRenamePlaylistDialog(playlist)
+                3 -> if (playlist.isEditablePlaylist()) showDeletePlaylistDialog(playlist)
             }
         }
     }
 
     private fun showPlaylistSongsDialog(playlistId: Long) {
         val playlist = playlists.find { it.id == playlistId } ?: return
+        if (playlist.isRemoteSystemPlaylist()) {
+            openRemotePlaylistSurface(playlist)
+            return
+        }
         val playlistSongs = viewModel.getPlaylistSongs(playlistId)
         if (playlistSongs.isEmpty()) {
             dialogBuilder()
@@ -986,8 +1006,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun openRemotePlaylistSurface(playlist: Playlist) {
+        val browseId = playlist.remoteBrowseId ?: return
+        openAccountBrowseSurface(
+            browseId = browseId,
+            title = playlist.name,
+            type = playlist.remoteBrowseType
+        )
+    }
+
     private fun showAddSongToPlaylistDialog(song: Song) {
-        if (playlists.isEmpty()) {
+        val editablePlaylists = playlists.filter { it.isEditablePlaylist() }
+        if (editablePlaylists.isEmpty()) {
             dialogBuilder()
                 .setTitle("Add to playlist")
                 .setMessage("No playlists yet.")
@@ -1001,11 +1031,11 @@ class MainActivity : AppCompatActivity() {
 
         showSimpleBottomSheet(
             title = "Add to playlist",
-            items = playlists.map { it.name },
+            items = editablePlaylists.map { it.name },
             primaryLabel = "Create new",
             onPrimaryClick = { showCreatePlaylistDialog(song) }
         ) { index ->
-            val playlist = playlists.getOrNull(index) ?: return@showSimpleBottomSheet
+            val playlist = editablePlaylists.getOrNull(index) ?: return@showSimpleBottomSheet
             val added = viewModel.addSongToPlaylist(playlist.id, song)
             if (added) {
                 showToast("Added to ${playlist.name}")
@@ -1076,6 +1106,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAddSongsToPlaylistDialog(playlistId: Long) {
         val playlist = playlists.find { it.id == playlistId } ?: return
+        if (!playlist.isEditablePlaylist()) {
+            showToast("This playlist cannot be edited")
+            return
+        }
         if (allSongs.isEmpty()) {
             showToast("No songs available")
             return
@@ -1373,6 +1407,13 @@ class MainActivity : AppCompatActivity() {
         safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_TYPE)
     }
 
+    private fun handleOpenPlaylistsIntent(intent: Intent?) {
+        val safeIntent = intent ?: return
+        if (!safeIntent.getBooleanExtra(EXTRA_OPEN_PLAYLISTS_TAB, false)) return
+        openPlaylistsTab()
+        safeIntent.removeExtra(EXTRA_OPEN_PLAYLISTS_TAB)
+    }
+
     private fun openAccountBrowseSurface(
         browseId: String,
         title: String,
@@ -1523,12 +1564,14 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshPlaybackSettingsFromStorage()
+        viewModel.refreshSpecialPlaylists()
         hasAudioPermission = ContextCompat.checkSelfPermission(this, audioReadPermission()) ==
             PackageManager.PERMISSION_GRANTED
         hasNotificationPermission = isNotificationPermissionGranted()
         if (hasAudioPermission && hasNotificationPermission && allSongs.isEmpty()) {
             viewModel.loadSongs()
         }
+        refreshAccountProfileIfNeeded()
         maybeRefreshHomeForAccountChange()
         updateHomeLibraryStateUi()
         handler.post(updateSeekbarRunnable)
@@ -1641,6 +1684,44 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun refreshAccountProfileIfNeeded() {
+        val account = YouTubeAccountStore.read(this)
+        if (!account.isLoggedIn) return
+        if (isRefreshingAccountProfile) return
+        val needsName = account.accountName.isBlank()
+        val needsAvatar = account.avatarUrl.isBlank()
+        if (!needsName && !needsAvatar) return
+
+        isRefreshingAccountProfile = true
+        lifecycleScope.launch {
+            val profile = runCatching {
+                youTubeApiClient.fetchAccountProfile(
+                    cookie = account.cookie,
+                    visitorData = account.visitorData,
+                    dataSyncId = account.dataSyncId
+                )
+            }.getOrNull()
+            isRefreshingAccountProfile = false
+            if (profile == null) return@launch
+
+            val mergedName = profile.name.ifBlank { account.accountName }
+            val mergedAvatar = profile.avatarUrl.orEmpty().ifBlank { account.avatarUrl }
+            if (mergedName == account.accountName && mergedAvatar == account.avatarUrl) return@launch
+
+            YouTubeAccountStore.save(
+                context = this@MainActivity,
+                cookie = account.cookie,
+                visitorData = account.visitorData,
+                dataSyncId = account.dataSyncId,
+                accountName = mergedName,
+                avatarUrl = mergedAvatar
+            )
+            viewModel.refreshSpecialPlaylists()
+            bindHomeAccountRow()
+            bindHomeFeedHeader()
+        }
+    }
+
     private fun currentHomeAccountFingerprint(): String {
         val account = YouTubeAccountStore.read(this)
         return listOf(
@@ -1656,22 +1737,15 @@ class MainActivity : AppCompatActivity() {
             updateHomeLibraryStateUi()
             return
         }
+        val previousItems = homeFeedItems
         homeFeedJob?.cancel()
         isHomeFeedLoading = true
         homeFeedErrorMessage = null
-        if (forceRefresh) {
-            homeFeedItems = emptyList()
-        }
         updateHomeLibraryStateUi()
         homeFeedJob = lifecycleScope.launch {
-            val result = runCatching {
-                youTubeApiClient.browseCollection(
-                    browseId = HOME_BROWSE_ID,
-                    maxResults = HOME_MAX_RESULTS
-                )
-            }
+            val result = fetchHomeFeedWithRetries()
             isHomeFeedLoading = false
-            homeFeedItems = result.getOrDefault(emptyList())
+            val fetchedItems = result.getOrDefault(emptyList())
                 .filterNot { it.title.isBlank() }
                 .filterNot { item ->
                     val section = item.sectionTitle.orEmpty().lowercase()
@@ -1679,6 +1753,13 @@ class MainActivity : AppCompatActivity() {
                         section.contains("podcast") ||
                         section.contains("music videos for you")
                 }
+
+            if (fetchedItems.isNotEmpty()) {
+                homeFeedItems = fetchedItems
+            } else if (previousItems.isNotEmpty()) {
+                homeFeedItems = previousItems
+            }
+
             homeFeedLastUpdatedLabel = if (homeFeedItems.isNotEmpty()) {
                 "Updated ${currentHomeRefreshLabel()}"
             } else {
@@ -1691,6 +1772,25 @@ class MainActivity : AppCompatActivity() {
             }
             updateHomeLibraryStateUi()
         }
+    }
+
+    private suspend fun fetchHomeFeedWithRetries(): Result<List<YouTubeVideo>> {
+        var lastError: Throwable? = null
+        repeat(3) { attempt ->
+            val result = runCatching {
+                youTubeApiClient.browseCollection(
+                    browseId = HOME_BROWSE_ID,
+                    maxResults = HOME_MAX_RESULTS
+                )
+            }
+            val items = result.getOrNull().orEmpty()
+            if (items.isNotEmpty()) return Result.success(items)
+            lastError = result.exceptionOrNull() ?: IllegalStateException("Home returned no sections")
+            if (attempt < 2) {
+                delay((350L * (attempt + 1)).coerceAtMost(900L))
+            }
+        }
+        return Result.failure(lastError ?: IllegalStateException("Home feed unavailable"))
     }
 
     private fun bindHomeFeedHeader() {
@@ -1739,7 +1839,7 @@ class MainActivity : AppCompatActivity() {
                 crossfade(true)
                 transformations(RoundedCornersTransformation(999f))
             }
-        } ?: ivHomeAccountAvatar.setImageResource(R.drawable.ml_library_music)
+        } ?: ivHomeAccountAvatar.setImageResource(R.drawable.ic_account)
         tvHomeAccountName.text = if (isLoggedIn) {
             account.accountName.ifBlank { "Connected account" }
         } else {
@@ -1931,6 +2031,11 @@ class MainActivity : AppCompatActivity() {
             .commit()
         currentBottomTab = youtubeRootTab
         updateBottomNavSelection(youtubeRootTab)
+    }
+
+    fun openYouTubeBrowseFromPlaylists(item: YouTubeVideo) {
+        youtubeRootTab = BottomTab.PLAYLISTS
+        openYouTubeBrowse(item)
     }
 
     private fun isForwardTabMove(from: BottomTab, to: BottomTab): Boolean {

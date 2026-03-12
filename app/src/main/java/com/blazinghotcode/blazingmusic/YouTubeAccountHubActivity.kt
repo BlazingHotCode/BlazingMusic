@@ -29,7 +29,7 @@ class YouTubeAccountHubActivity : AppCompatActivity() {
                 crossfade(true)
                 transformations(RoundedCornersTransformation(999f))
             }
-        } ?: ivAccountAvatar.setImageResource(R.drawable.ml_library_music)
+        } ?: ivAccountAvatar.setImageResource(R.drawable.ic_account)
         tvAccountName.text = account.accountName.ifBlank { "Your YouTube account" }
         tvAccountSummary.text = "Open native signed-in sections inspired by Metrolist."
 

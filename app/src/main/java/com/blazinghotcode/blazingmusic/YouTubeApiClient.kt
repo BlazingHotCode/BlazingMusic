@@ -607,22 +607,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         )
         return withContext(Dispatchers.IO) {
             runCatching {
-                val url = URL("https://music.youtube.com/")
-                val connection = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 12_000
-                    readTimeout = 15_000
-                    setRequestProperty("User-Agent", USER_AGENT_WEB)
-                    setRequestProperty("Accept", "text/html")
-                    setRequestProperty("Referer", "https://music.youtube.com/")
-                    applyAccountHeaders(this, auth)
-                }
-                try {
-                    val html = connection.inputStream.bufferedReader().use { it.readText() }
-                    extractAccountProfileFromHtml(html)
-                } finally {
-                    connection.disconnect()
-                }
+                fetchAccountProfileFromMenu(auth) ?: fetchAccountProfileFromHtml(auth)
             }.getOrNull()
         }
     }
@@ -1042,6 +1027,114 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         return "SAPISIDHASH ${timestamp}_$digest"
     }
 
+    private fun fetchAccountProfileFromMenu(auth: YouTubeAccountStore.AccountAuth): AccountProfile? {
+        val url = URL("$INNER_TUBE_BASE/account/account_menu?prettyPrint=false")
+        val body = JSONObject().put("context", contextObjectWithAuth(auth))
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = 12_000
+            readTimeout = 15_000
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Origin", "https://music.youtube.com")
+            setRequestProperty("Referer", "https://music.youtube.com/")
+            setRequestProperty("User-Agent", USER_AGENT_WEB)
+            setRequestProperty("X-YouTube-Client-Name", WEB_REMIX_CLIENT_ID)
+            setRequestProperty("X-YouTube-Client-Version", WEB_REMIX_CLIENT_VERSION)
+            applyAccountHeaders(this, auth)
+        }
+        return try {
+            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body.toString()) }
+            if (connection.responseCode !in 200..299) return null
+            val payload = connection.inputStream.bufferedReader().use { it.readText() }
+            extractAccountProfileFromMenuJson(JSONObject(payload))
+        } catch (_: Throwable) {
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun fetchAccountProfileFromHtml(auth: YouTubeAccountStore.AccountAuth): AccountProfile? {
+        val url = URL("https://music.youtube.com/")
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 12_000
+            readTimeout = 15_000
+            setRequestProperty("User-Agent", USER_AGENT_WEB)
+            setRequestProperty("Accept", "text/html")
+            setRequestProperty("Referer", "https://music.youtube.com/")
+            applyAccountHeaders(this, auth)
+        }
+        return try {
+            val html = connection.inputStream.bufferedReader().use { it.readText() }
+            extractAccountProfileFromHtml(html)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun extractAccountProfileFromMenuJson(root: JSONObject): AccountProfile? {
+        val header = root.optJSONArray("actions")
+            ?.optJSONObject(0)
+            ?.optJSONObject("openPopupAction")
+            ?.optJSONObject("popup")
+            ?.optJSONObject("multiPageMenuRenderer")
+            ?.optJSONObject("header")
+            ?.optJSONObject("activeAccountHeaderRenderer")
+            ?: return null
+
+        val name = header.optJSONObject("accountName")
+            ?.optJSONArray("runs")
+            ?.optJSONObject(0)
+            ?.optString("text", "")
+            .orEmpty()
+            .trim()
+
+        val avatar = header.optJSONObject("accountPhoto")
+            ?.optJSONArray("thumbnails")
+            ?.let(::pickBestThumbnailUrl)
+            .orEmpty()
+
+        if (name.isBlank() && avatar.isBlank()) return null
+        return AccountProfile(name = name, avatarUrl = avatar.takeIf { it.isNotBlank() })
+    }
+
+    private fun pickBestThumbnailUrl(thumbnails: JSONArray): String {
+        var bestUrl = ""
+        var bestWidth = -1
+        for (index in 0 until thumbnails.length()) {
+            val item = thumbnails.optJSONObject(index) ?: continue
+            val url = item.optString("url", "").replace("\\/", "/").trim()
+            if (url.isBlank()) continue
+            val width = item.optInt("width", 0)
+            if (width >= bestWidth) {
+                bestWidth = width
+                bestUrl = url
+            }
+        }
+        return bestUrl
+    }
+
+    private fun contextObjectWithAuth(auth: YouTubeAccountStore.AccountAuth): JSONObject {
+        return JSONObject().put(
+            "client",
+            JSONObject()
+                .put("clientName", WEB_REMIX_CLIENT_NAME)
+                .put("clientVersion", WEB_REMIX_CLIENT_VERSION)
+                .put("hl", "en")
+                .put("gl", "US")
+                .apply {
+                    auth.visitorData.takeIf { it.isNotBlank() }?.let { put("visitorData", it) }
+                }
+        ).apply {
+            auth.dataSyncId.takeIf { it.isNotBlank() }?.let {
+                put("user", JSONObject().put("onBehalfOfUser", it))
+            }
+        }
+    }
+
     private fun extractAccountProfileFromHtml(html: String): AccountProfile? {
         val namePatterns = listOf(
             Regex("\"accountName\":\"([^\"]+)\""),
@@ -1060,6 +1153,11 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             val match = regex.find(html) ?: return@firstNotNullOfOrNull null
             match.groupValues.getOrNull(1)?.ifBlank { null } ?: match.value
         }?.replace("\\/", "/")?.trim().orEmpty()
+            .takeIf {
+                it.contains("googleusercontent.com", ignoreCase = true) ||
+                    it.contains("ggpht.com", ignoreCase = true)
+            }
+            .orEmpty()
         if (name.isBlank() && avatarUrl.isBlank()) return null
         return AccountProfile(name = name, avatarUrl = avatarUrl.takeIf { it.isNotBlank() })
     }

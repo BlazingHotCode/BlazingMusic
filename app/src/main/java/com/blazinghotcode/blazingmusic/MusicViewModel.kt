@@ -591,6 +591,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePlaylist(playlistId: Long): Boolean {
         if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return false
+        if (playlistsInternal.find { it.id == playlistId }?.isRemoteSystemPlaylist() == true) return false
         val beforeSize = playlistsInternal.size
         playlistsInternal = playlistsInternal.filterNot { it.id == playlistId }
         if (playlistsInternal.size == beforeSize) return false
@@ -607,37 +608,47 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         if (songs.isEmpty()) return 0
 
         val target = playlistsInternal.find { it.id == playlistId } ?: return 0
-        val existingPaths = target.songPaths.toMutableSet()
-        val pathsToAdd = songs.map { it.path }.filter { existingPaths.add(it) }
-        if (pathsToAdd.isEmpty()) return 0
+        if (!target.isEditablePlaylist()) return 0
+        val existingKeys = target.songs.map(::playlistSongKey).toMutableSet()
+        val songsToAdd = songs.filter { existingKeys.add(playlistSongKey(it)) }
+        if (songsToAdd.isEmpty()) return 0
 
-        val updatedPlaylist = target.copy(songPaths = target.songPaths + pathsToAdd)
+        val updatedSongs = target.songs + songsToAdd
+        val updatedPlaylist = target.copy(
+            songPaths = updatedSongs.map { it.path },
+            songs = updatedSongs
+        )
         playlistsInternal = playlistsInternal.map {
             if (it.id == playlistId) updatedPlaylist else it
         }
         publishPlaylists()
-        return pathsToAdd.size
+        return songsToAdd.size
     }
 
     fun removeSongsFromPlaylist(playlistId: Long, songPaths: Set<String>): Int {
         if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return 0
         if (songPaths.isEmpty()) return 0
         val target = playlistsInternal.find { it.id == playlistId } ?: return 0
-        val beforeSize = target.songPaths.size
-        val updatedPaths = target.songPaths.filterNot { it in songPaths }
-        if (beforeSize == updatedPaths.size) return 0
+        if (!target.isEditablePlaylist()) return 0
+        val beforeSize = target.songs.size
+        val updatedSongs = target.songs.filterNot { it.path in songPaths }
+        if (beforeSize == updatedSongs.size) return 0
 
-        val updatedPlaylist = target.copy(songPaths = updatedPaths)
+        val updatedPlaylist = target.copy(
+            songPaths = updatedSongs.map { it.path },
+            songs = updatedSongs
+        )
         playlistsInternal = playlistsInternal.map {
             if (it.id == playlistId) updatedPlaylist else it
         }
         publishPlaylists()
-        return beforeSize - updatedPaths.size
+        return beforeSize - updatedSongs.size
     }
 
     fun reorderPlaylistSongs(playlistId: Long, reorderedSongPaths: List<String>): Boolean {
         if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) return false
         val target = playlistsInternal.find { it.id == playlistId } ?: return false
+        if (!target.isEditablePlaylist()) return false
         if (target.songPaths.size != reorderedSongPaths.size) return false
 
         val normalized = reorderedSongPaths.distinct()
@@ -645,7 +656,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         if (normalized.toSet() != target.songPaths.toSet()) return false
         if (normalized == target.songPaths) return true
 
-        val updated = target.copy(songPaths = normalized)
+        val songsByPath = target.songs.associateBy { it.path }
+        val updated = target.copy(
+            songPaths = normalized,
+            songs = normalized.mapNotNull { songsByPath[it] }
+        )
         playlistsInternal = playlistsInternal.map {
             if (it.id == playlistId) updated else it
         }
@@ -658,9 +673,18 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             return (_songs.value ?: normalQueue).distinctBy { it.path }
         }
         val playlist = playlistsInternal.find { it.id == playlistId } ?: return emptyList()
+        if (playlist.songs.isNotEmpty()) {
+            val localSongsByPath = (_songs.value ?: normalQueue).associateBy { it.path }
+            return playlist.songs.map { stored -> localSongsByPath[stored.path] ?: stored }
+        }
         if (playlist.songPaths.isEmpty()) return emptyList()
         val songsByPath = (_songs.value ?: normalQueue).associateBy { it.path }
         return playlist.songPaths.mapNotNull { songsByPath[it] }
+    }
+
+    fun refreshSpecialPlaylists() {
+        rebuildSystemPlaylists()
+        _playlists.value = playlistsInternal
     }
 
     private fun buildShuffledQueue(queue: List<Song>): List<Song> {
@@ -833,6 +857,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun publishPlaylists() {
+        rebuildSystemPlaylists()
         _playlists.value = playlistsInternal
         persistPlaylists()
     }
@@ -863,19 +888,32 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     val name = json.optString("name", "").trim()
                     if (id <= 0L || name.isEmpty() || id == LOCAL_MUSIC_PLAYLIST_ID) continue
 
-                    val songsArray = json.optJSONArray("song_paths") ?: JSONArray()
+                    val songPathsArray = json.optJSONArray("song_paths") ?: JSONArray()
                     val paths = buildList {
-                        for (songIndex in 0 until songsArray.length()) {
-                            val path = songsArray.optString(songIndex, "").trim()
+                        for (songIndex in 0 until songPathsArray.length()) {
+                            val path = songPathsArray.optString(songIndex, "").trim()
                             if (path.isNotEmpty()) add(path)
                         }
                     }.distinct()
+
+                    val songsArray = json.optJSONArray("songs") ?: JSONArray()
+                    val songs = buildList {
+                        for (songIndex in 0 until songsArray.length()) {
+                            val songJson = songsArray.optJSONObject(songIndex) ?: continue
+                            songFromJson(songJson)?.let(::add)
+                        }
+                    }
 
                     add(
                         Playlist(
                             id = id,
                             name = name,
-                            songPaths = paths
+                            songPaths = if (songs.isNotEmpty()) songs.map { it.path } else paths,
+                            songs = songs,
+                            remoteBrowseId = json.optString("remote_browse_id", "").ifBlank { null },
+                            remoteBrowseType = YouTubeItemType.entries.getOrNull(
+                                json.optInt("remote_browse_type", YouTubeItemType.UNKNOWN.ordinal)
+                            ) ?: YouTubeItemType.UNKNOWN
                         )
                     )
                 }
@@ -883,19 +921,22 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Throwable) {
             emptyList()
         }
-        ensureLocalMusicPlaylist()
+        rebuildSystemPlaylists()
         _playlists.value = playlistsInternal
     }
 
     private fun persistPlaylists() {
         val jsonArray = JSONArray()
         playlistsInternal
-            .filterNot { it.id == LOCAL_MUSIC_PLAYLIST_ID }
+            .filter { it.id > 0L }
             .forEach { playlist ->
             val playlistJson = JSONObject()
                 .put("id", playlist.id)
                 .put("name", playlist.name)
                 .put("song_paths", JSONArray(playlist.songPaths))
+                .put("songs", JSONArray().apply { playlist.songs.forEach { put(songToJson(it)) } })
+                .put("remote_browse_id", playlist.remoteBrowseId)
+                .put("remote_browse_type", playlist.remoteBrowseType.ordinal)
             jsonArray.put(playlistJson)
         }
 
@@ -913,7 +954,64 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         )
         val others = playlistsInternal.filterNot { it.id == LOCAL_MUSIC_PLAYLIST_ID }
         playlistsInternal = listOf(localPlaylist) + others
-        _playlists.value = playlistsInternal
+    }
+
+    private fun rebuildSystemPlaylists() {
+        ensureLocalMusicPlaylist()
+        val account = YouTubeAccountStore.read(getApplication<Application>().applicationContext)
+        val custom = playlistsInternal.filter { it.id > 0L }
+        val system = mutableListOf(playlistsInternal.first { it.id == LOCAL_MUSIC_PLAYLIST_ID })
+        if (account.isLoggedIn) {
+            system += Playlist(
+                id = PlaylistSystem.ACCOUNT_PLAYLISTS_ID,
+                name = "YouTube Playlists",
+                songPaths = emptyList(),
+                remoteBrowseId = YouTubeAccountSurfaces.PLAYLISTS_BROWSE_ID,
+                remoteBrowseType = YouTubeItemType.PLAYLIST
+            )
+        }
+        playlistsInternal = system + custom
+    }
+
+    private fun playlistSongKey(song: Song): String {
+        return song.sourceVideoId?.takeIf { it.isNotBlank() } ?: song.path
+    }
+
+    private fun songToJson(song: Song): JSONObject {
+        return JSONObject()
+            .put("id", song.id)
+            .put("title", song.title)
+            .put("artist", song.artist)
+            .put("album", song.album)
+            .put("duration", song.duration)
+            .put("date_added_seconds", song.dateAddedSeconds)
+            .put("path", song.path)
+            .put("album_art_uri", song.albumArtUri)
+            .put("source_video_id", song.sourceVideoId)
+            .put("source_playlist_id", song.sourcePlaylistId)
+            .put("source_playlist_set_video_id", song.sourcePlaylistSetVideoId)
+            .put("source_params", song.sourceParams)
+            .put("source_index", song.sourceIndex)
+    }
+
+    private fun songFromJson(json: JSONObject): Song? {
+        val path = json.optString("path", "").trim()
+        if (path.isBlank()) return null
+        return Song(
+            id = json.optLong("id", 0L),
+            title = json.optString("title", ""),
+            artist = json.optString("artist", ""),
+            album = json.optString("album", ""),
+            duration = json.optLong("duration", 0L),
+            dateAddedSeconds = json.optLong("date_added_seconds", 0L),
+            path = path,
+            albumArtUri = json.optString("album_art_uri", "").ifBlank { null },
+            sourceVideoId = json.optString("source_video_id", "").ifBlank { null },
+            sourcePlaylistId = json.optString("source_playlist_id", "").ifBlank { null },
+            sourcePlaylistSetVideoId = json.optString("source_playlist_set_video_id", "").ifBlank { null },
+            sourceParams = json.optString("source_params", "").ifBlank { null },
+            sourceIndex = json.optInt("source_index").takeIf { !json.isNull("source_index") }
+        )
     }
 
     private fun restorePersistedQueue(allSongs: List<Song>): Pair<List<Song>?, Int> {

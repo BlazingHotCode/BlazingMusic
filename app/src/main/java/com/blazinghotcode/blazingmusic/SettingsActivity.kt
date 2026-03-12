@@ -134,7 +134,7 @@ class SettingsActivity : AppCompatActivity() {
                 crossfade(true)
                 transformations(RoundedCornersTransformation(999f))
             }
-        } ?: ivAccountAvatar.setImageResource(R.drawable.ml_library_music)
+        } ?: ivAccountAvatar.setImageResource(R.drawable.ic_account)
         tvAccountStatus.text = if (isLoggedIn) {
             account.accountName.ifBlank { "Logged in" }
         } else {

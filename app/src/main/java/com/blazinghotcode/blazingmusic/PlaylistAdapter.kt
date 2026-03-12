@@ -46,13 +46,23 @@ class PlaylistAdapter(
 
         fun bind(playlist: Playlist) {
             binding.tvPlaylistName.text = playlist.name
-            val songsWord = if (playlist.songPaths.size == 1) "song" else "songs"
-            binding.tvPlaylistCount.text = "${playlist.songPaths.size} $songsWord"
+            binding.tvPlaylistCount.text = when {
+                playlist.isRemoteSystemPlaylist() -> "Signed-in YouTube"
+                else -> {
+                    val songsWord = if (playlist.songPaths.size == 1) "song" else "songs"
+                    "${playlist.songPaths.size} $songsWord"
+                }
+            }
             if (playlist.isLocalMusicSystemPlaylist()) {
                 binding.ivPlaylist.setImageResource(R.drawable.ml_library_music_filled)
                 binding.ivPlaylist.imageTintList =
                     ContextCompat.getColorStateList(binding.root.context, R.color.accent_lavender)
                 binding.ivPlaylist.contentDescription = "Local music playlist"
+            } else if (playlist.isRemoteSystemPlaylist()) {
+                binding.ivPlaylist.setImageResource(R.drawable.ic_account)
+                binding.ivPlaylist.imageTintList =
+                    ContextCompat.getColorStateList(binding.root.context, R.color.text_primary)
+                binding.ivPlaylist.contentDescription = "YouTube account surface"
             } else {
                 binding.ivPlaylist.setImageResource(R.drawable.ml_playlist_play)
                 binding.ivPlaylist.imageTintList =

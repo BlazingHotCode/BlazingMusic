@@ -107,7 +107,22 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     private fun setupRecycler() {
         playlistAdapter = PlaylistAdapter(
             onPlaylistClick = { playlist ->
-                (activity as? MainActivity)?.openPlaylistSongs(playlist.id, playlist.name)
+                val main = activity as? MainActivity ?: return@PlaylistAdapter
+                if (playlist.isRemoteSystemPlaylist()) {
+                    main.openYouTubeBrowseFromPlaylists(
+                        YouTubeVideo(
+                            id = "playlist:${playlist.id}",
+                            title = playlist.name,
+                            channelTitle = "",
+                            thumbnailUrl = null,
+                            browseId = playlist.remoteBrowseId,
+                            browseParams = null,
+                            type = playlist.remoteBrowseType
+                        )
+                    )
+                } else {
+                    main.openPlaylistSongs(playlist.id, playlist.name)
+                }
             },
             onPlaylistMenuClick = { playlist, anchor ->
                 showPlaylistMenu(playlist, anchor)
@@ -168,7 +183,7 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
             anchor
         ).apply {
             menu.add(Menu.NONE, 1, Menu.NONE, "Open")
-            if (!playlist.isLocalMusicSystemPlaylist()) {
+            if (playlist.isEditablePlaylist()) {
                 menu.add(Menu.NONE, 2, Menu.NONE, "Rename")
                 menu.add(Menu.NONE, 3, Menu.NONE, "Delete")
                 menu.add(Menu.NONE, 4, Menu.NONE, "Select multiple")
@@ -176,7 +191,22 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     1 -> {
-                        (activity as? MainActivity)?.openPlaylistSongs(playlist.id, playlist.name)
+                        val main = activity as? MainActivity ?: return@setOnMenuItemClickListener false
+                        if (playlist.isRemoteSystemPlaylist()) {
+                            main.openYouTubeBrowseFromPlaylists(
+                                YouTubeVideo(
+                                    id = "playlist:${playlist.id}",
+                                    title = playlist.name,
+                                    channelTitle = "",
+                                    thumbnailUrl = null,
+                                    browseId = playlist.remoteBrowseId,
+                                    browseParams = null,
+                                    type = playlist.remoteBrowseType
+                                )
+                            )
+                        } else {
+                            main.openPlaylistSongs(playlist.id, playlist.name)
+                        }
                         true
                     }
                     2 -> {
@@ -199,7 +229,7 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     }
 
     private fun showMultiSelectPlaylistsDialog() {
-        val editablePlaylists = allPlaylists.filterNot { it.isLocalMusicSystemPlaylist() }
+        val editablePlaylists = allPlaylists.filter { it.isEditablePlaylist() }
         if (editablePlaylists.isEmpty()) {
             showToast("No playlists yet")
             return
@@ -247,6 +277,10 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
             showToast("Local music playlist cannot be renamed")
             return
         }
+        if (!playlist.isEditablePlaylist()) {
+            showToast("This playlist cannot be renamed")
+            return
+        }
         showTextInputBottomSheet(
             title = "Rename playlist",
             hint = "Playlist name",
@@ -261,6 +295,10 @@ class PlaylistsFragment : Fragment(R.layout.fragment_playlists) {
     private fun showDeletePlaylistDialog(playlist: Playlist) {
         if (playlist.isLocalMusicSystemPlaylist()) {
             showToast("Local music playlist cannot be deleted")
+            return
+        }
+        if (!playlist.isEditablePlaylist()) {
+            showToast("This playlist cannot be deleted")
             return
         }
         showConfirmBottomSheet(
