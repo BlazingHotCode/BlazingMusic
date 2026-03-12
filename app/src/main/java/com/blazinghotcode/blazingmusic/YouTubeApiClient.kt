@@ -7,9 +7,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
+import java.net.URLEncoder
 
 /**
  * YouTube Music InnerTube client inspired by Metrolist's WEB_REMIX flow.
@@ -702,8 +704,21 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             val params = parseUrlEncodedParams(cipher)
             val cipherUrl = params["url"].orEmpty().trim()
             if (cipherUrl.isNotEmpty()) {
-                if (looksLikeDirectPlayableAudioUrl(cipherUrl)) {
-                    return cipherUrl
+                val sp = params["sp"].orEmpty().ifBlank { "signature" }
+                val s = params["s"].orEmpty().trim()
+                val candidate = if (s.isNotEmpty()) {
+                    buildDecipheredSignatureUrl(
+                        videoId = videoId,
+                        baseUrl = cipherUrl,
+                        sp = sp,
+                        signature = s
+                    )
+                } else {
+                    cipherUrl
+                }
+
+                if (!candidate.isNullOrBlank() && looksLikeDirectPlayableAudioUrl(candidate)) {
+                    return candidate
                 }
             }
         }
@@ -1307,6 +1322,21 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                 key to v
             }
             .toMap()
+    }
+
+    private fun buildDecipheredSignatureUrl(
+        videoId: String,
+        baseUrl: String,
+        sp: String,
+        signature: String
+    ): String? {
+        return runCatching {
+            YouTubeStreamResolver.ensureInitializedForCipher()
+            val decipheredSignature = YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, signature)
+            val separator = if (baseUrl.contains("?")) '&' else '?'
+            val withSignature = "$baseUrl$separator${URLEncoder.encode(sp, "UTF-8")}=${URLEncoder.encode(decipheredSignature, "UTF-8")}"
+            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, withSignature)
+        }.getOrNull()
     }
 
     private fun looksLikeDirectPlayableAudioUrl(url: String): Boolean {

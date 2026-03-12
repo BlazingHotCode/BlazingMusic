@@ -31,6 +31,8 @@ object YouTubeStreamResolver {
         }.getOrNull()
     }
 
+    fun ensureInitializedForCipher(): Unit = ensureInitialized()
+
     private fun ensureInitialized() {
         if (initialized.compareAndSet(false, true)) {
             NewPipe.init(downloader)
