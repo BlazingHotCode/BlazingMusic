@@ -547,6 +547,20 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             return webRemixCandidate
         }
 
+        val embeddedCandidate = resolveAudioStreamUrlWithClient(
+            videoId = videoId,
+            context = contextObjectTvEmbedded(),
+            clientName = TV_EMBEDDED_CLIENT_NAME,
+            clientVersion = TV_EMBEDDED_CLIENT_VERSION,
+            clientId = TV_EMBEDDED_CLIENT_ID,
+            userAgent = USER_AGENT_TV_EMBEDDED
+        )
+        if (!embeddedCandidate.isNullOrBlank() && isStreamPlayable(embeddedCandidate)) {
+            Log.i(TAG, "Resolved playable stream with embedded TV player for $videoId")
+            cacheStreamUrl(videoId, embeddedCandidate)
+            return embeddedCandidate
+        }
+
         val androidCandidate = resolveAudioStreamUrlWithClient(
             videoId = videoId,
             context = contextObjectAndroid(),
@@ -592,6 +606,19 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         if (!webRemixCandidate.isNullOrBlank() && looksLikeDirectPlayableAudioUrl(webRemixCandidate)) {
             cacheStreamUrl(videoId, webRemixCandidate)
             return webRemixCandidate
+        }
+
+        val embeddedCandidate = resolveAudioStreamUrlWithClient(
+            videoId = videoId,
+            context = contextObjectTvEmbedded(),
+            clientName = TV_EMBEDDED_CLIENT_NAME,
+            clientVersion = TV_EMBEDDED_CLIENT_VERSION,
+            clientId = TV_EMBEDDED_CLIENT_ID,
+            userAgent = USER_AGENT_TV_EMBEDDED
+        )
+        if (!embeddedCandidate.isNullOrBlank() && looksLikeDirectPlayableAudioUrl(embeddedCandidate)) {
+            cacheStreamUrl(videoId, embeddedCandidate)
+            return embeddedCandidate
         }
 
         return resolveAudioStreamUrlFresh(videoId)
@@ -676,6 +703,11 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             )
             .put("racyCheckOk", true)
             .put("contentCheckOk", true)
+            .apply {
+                if (clientName == TV_EMBEDDED_CLIENT_NAME) {
+                    put("thirdParty", JSONObject().put("embedUrl", "https://www.youtube.com/"))
+                }
+            }
 
         val response = post(
             path = "player",
@@ -826,6 +858,17 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                 .put("clientName", ANDROID_CLIENT_NAME)
                 .put("clientVersion", ANDROID_CLIENT_VERSION)
                 .put("androidSdkVersion", 35)
+                .put("hl", "en")
+                .put("gl", "US")
+        )
+    }
+
+    private fun contextObjectTvEmbedded(): JSONObject {
+        return JSONObject().put(
+            "client",
+            JSONObject()
+                .put("clientName", TV_EMBEDDED_CLIENT_NAME)
+                .put("clientVersion", TV_EMBEDDED_CLIENT_VERSION)
                 .put("hl", "en")
                 .put("gl", "US")
         )
@@ -1493,11 +1536,16 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         private const val WEB_REMIX_CLIENT_ID = "67"
         private const val WEB_REMIX_CLIENT_NAME = "WEB_REMIX"
         private const val WEB_REMIX_CLIENT_VERSION = "1.20260213.01.00"
+        private const val TV_EMBEDDED_CLIENT_ID = "85"
+        private const val TV_EMBEDDED_CLIENT_NAME = "TVHTML5_SIMPLY_EMBEDDED_PLAYER"
+        private const val TV_EMBEDDED_CLIENT_VERSION = "2.0"
         private const val ANDROID_CLIENT_ID = "3"
         private const val ANDROID_CLIENT_NAME = "ANDROID"
         private const val ANDROID_CLIENT_VERSION = "21.03.38"
         private const val USER_AGENT_WEB =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+        private const val USER_AGENT_TV_EMBEDDED =
+            "Mozilla/5.0 (PlayStation; PlayStation 4/12.02) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15"
         private const val USER_AGENT_ANDROID =
             "com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip"
         private val RADIO_BLOCKED_HINTS = listOf(
