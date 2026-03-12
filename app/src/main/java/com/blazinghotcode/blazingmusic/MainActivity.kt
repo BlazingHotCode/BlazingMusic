@@ -47,8 +47,6 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.lifecycle.lifecycleScope
 import android.os.Handler
 import android.os.Looper
-import com.google.android.material.chip.Chip
-import com.google.android.material.chip.ChipGroup
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.common.util.concurrent.ListenableFuture
@@ -110,10 +108,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHomeStateMessage: TextView
     private lateinit var btnHomeStateAction: Button
     private lateinit var tvHomeTitle: TextView
-    private lateinit var homeDiscoveryCard: View
-    private lateinit var tvHomeAccountStatus: TextView
-    private lateinit var chipGroupHomeRecentSearches: ChipGroup
-    private lateinit var btnHomeExploreOnline: Button
     private lateinit var songAlphabetIndex: AlphabetIndexView
     private lateinit var songScrollTrack: View
     private lateinit var songScrollThumb: View
@@ -254,10 +248,6 @@ class MainActivity : AppCompatActivity() {
         tvHomeStateMessage = findViewById(R.id.tvHomeStateMessage)
         btnHomeStateAction = findViewById(R.id.btnHomeStateAction)
         tvHomeTitle = findViewById(R.id.tvTitle)
-        homeDiscoveryCard = findViewById(R.id.homeDiscoveryCard)
-        tvHomeAccountStatus = findViewById(R.id.tvHomeAccountStatus)
-        chipGroupHomeRecentSearches = findViewById(R.id.chipGroupHomeRecentSearches)
-        btnHomeExploreOnline = findViewById(R.id.btnHomeExploreOnline)
         songAlphabetIndex = findViewById(R.id.songAlphabetIndex)
         songScrollTrack = findViewById(R.id.songScrollTrack)
         songScrollThumb = findViewById(R.id.songScrollThumb)
@@ -265,12 +255,10 @@ class MainActivity : AppCompatActivity() {
         youtubeContainer = findViewById(R.id.youtubeContainer)
         currentSongSort = loadHomeSort()
         btnHomeStateAction.setOnClickListener { onHomeStateActionClicked() }
-        btnHomeExploreOnline.setOnClickListener { openSearchTab() }
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         setupDebugAnalyticsViewer()
-        refreshHomeDiscovery()
         tintSearchStartIcon()
         applySystemInsets()
     }
@@ -1277,7 +1265,6 @@ class MainActivity : AppCompatActivity() {
             rvSongs.visibility = View.VISIBLE
             bindHomeFeedHeader()
             homeFeedAdapter.submit(homeFeedItems)
-            refreshHomeDiscovery()
             return
         }
 
@@ -1465,7 +1452,6 @@ class MainActivity : AppCompatActivity() {
         }
         maybeRefreshHomeForAccountChange()
         updateHomeLibraryStateUi()
-        refreshHomeDiscovery()
         handler.post(updateSeekbarRunnable)
     }
 
@@ -1538,12 +1524,11 @@ class MainActivity : AppCompatActivity() {
 
     fun openHomeTab() {
         val previousTab = currentBottomTab
+        currentBottomTab = BottomTab.HOME
+        updateBottomNavSelection(BottomTab.HOME)
         if (playlistContainer.visibility != View.VISIBLE && youtubeContainer.visibility != View.VISIBLE) {
-            currentBottomTab = BottomTab.HOME
-            updateBottomNavSelection(BottomTab.HOME)
             refreshSongAlphabetIndexVisibility()
             updateHomeLibraryStateUi()
-            refreshHomeDiscovery()
             return
         }
         if (youtubeContainer.visibility == View.VISIBLE) {
@@ -1562,34 +1547,6 @@ class MainActivity : AppCompatActivity() {
             refreshSongAlphabetIndexVisibility()
             updateHomeLibraryStateUi()
         }
-        currentBottomTab = BottomTab.HOME
-        updateBottomNavSelection(BottomTab.HOME)
-        refreshHomeDiscovery()
-    }
-
-    fun refreshHomeDiscovery() {
-        val account = YouTubeAccountStore.read(this)
-        tvHomeAccountStatus.text = if (account.isLoggedIn) {
-            val accountName = account.accountName.ifBlank { "Connected account" }
-            "Personalized for $accountName"
-        } else {
-            "Guest recommendations"
-        }
-        val recentQueries = YouTubeSearchHistoryStore.load(this)
-        chipGroupHomeRecentSearches.removeAllViews()
-        recentQueries.forEach { query ->
-            val chip = Chip(this).apply {
-                text = query
-                isCheckable = false
-                isClickable = true
-                setCheckedIconVisible(false)
-                setEnsureMinTouchTargetSize(false)
-                setOnClickListener { openSearchTab(query) }
-            }
-            chipGroupHomeRecentSearches.addView(chip)
-        }
-        chipGroupHomeRecentSearches.visibility = if (recentQueries.isEmpty()) View.GONE else View.VISIBLE
-        homeDiscoveryCard.visibility = if (currentBottomTab == BottomTab.HOME) View.VISIBLE else View.GONE
     }
 
     private fun maybeRefreshHomeForAccountChange() {
@@ -1656,13 +1613,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindHomeFeedHeader() {
         val account = YouTubeAccountStore.read(this)
+        val accountName = account.accountName.ifBlank { "there" }
         val subtitle = buildString {
             append(
                 if (account.isLoggedIn) {
-                    val accountName = account.accountName.ifBlank { "your account" }
-                    "Online shelves for $accountName"
+                    "Signed in as ${account.accountName.ifBlank { "your account" }}"
                 } else {
-                    "Guest online shelves"
+                    "Public online shelves"
                 }
             )
             homeFeedLastUpdatedLabel?.let {
@@ -1673,13 +1630,13 @@ class MainActivity : AppCompatActivity() {
         homeFeedAdapter.setHeader(
             YouTubeBrowseAdapter.HeaderModel(
                 browseType = YouTubeItemType.UNKNOWN,
-                title = greetingTitle(),
+                title = greetingTitle(accountName.takeIf { account.isLoggedIn }),
                 subtitle = subtitle,
                 artworkUrl = homeFeedItems.firstNotNullOfOrNull { it.thumbnailUrl },
                 stateMessage = if (account.isLoggedIn) {
-                    "Quick picks, albums, playlists, and mixes tuned to your connected YouTube account."
+                    "Albums, playlists, mixes, and suggestions tuned to your connected YouTube account."
                 } else {
-                    "Quick picks, albums, playlists, and mixes from the public online home."
+                    "Albums, playlists, mixes, and suggestions from the public YouTube Music home."
                 },
                 artistInfo = null,
                 showArtistDescription = false,
@@ -1691,13 +1648,14 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun greetingTitle(): String {
+    private fun greetingTitle(accountName: String?): String {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-        return when (hour) {
+        val greeting = when (hour) {
             in 5..11 -> "Good morning"
             in 12..17 -> "Good afternoon"
             else -> "Good evening"
         }
+        return if (accountName.isNullOrBlank()) greeting else "$greeting, $accountName"
     }
 
     private fun currentHomeRefreshLabel(): String {
@@ -1839,7 +1797,6 @@ class MainActivity : AppCompatActivity() {
         updateBottomNavSelection(BottomTab.SEARCH)
         refreshSongAlphabetIndexVisibility()
         updateHomeLibraryStateUi()
-        refreshHomeDiscovery()
     }
 
     fun openYouTubeBrowse(item: YouTubeVideo) {

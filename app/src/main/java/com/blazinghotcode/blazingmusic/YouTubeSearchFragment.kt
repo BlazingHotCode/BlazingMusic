@@ -207,7 +207,6 @@ class YouTubeSearchFragment : Fragment() {
             adapter.submitResults(results, grouped = selectedFilter == YouTubeSearchFilter.ALL)
             YouTubeSearchHistoryStore.save(requireContext(), query)
             bindRecentSearchChips()
-            (activity as? MainActivity)?.refreshHomeDiscovery()
             if (results.isEmpty()) {
                 showState("No results found.")
             } else {
