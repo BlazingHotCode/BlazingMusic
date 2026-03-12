@@ -445,7 +445,10 @@ class YouTubeBrowseAdapter(
                         transformations(RoundedCornersTransformation(12f))
                     }
                 } ?: thumb.setImageResource(R.drawable.ml_library_music)
-                val showMenu = video.type == YouTubeItemType.ALBUM
+                val showMenu =
+                    video.type == YouTubeItemType.ALBUM ||
+                        video.type == YouTubeItemType.ARTIST ||
+                        video.type == YouTubeItemType.PLAYLIST
                 btnItemMore.visibility = if (showMenu) View.VISIBLE else View.GONE
                 btnItemMore.setOnClickListener(null)
                 if (showMenu) {
@@ -490,7 +493,10 @@ class YouTubeBrowseAdapter(
             } else {
                 thumb.setImageDrawable(null)
             }
-            val showMenu = video.type == YouTubeItemType.ALBUM
+            val showMenu =
+                video.type == YouTubeItemType.ALBUM ||
+                    video.type == YouTubeItemType.ARTIST ||
+                    video.type == YouTubeItemType.PLAYLIST
             btnItemMore.visibility = if (showMenu) View.VISIBLE else View.GONE
             btnItemMore.setOnClickListener(null)
             if (showMenu) {

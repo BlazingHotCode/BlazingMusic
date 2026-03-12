@@ -12,6 +12,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.security.MessageDigest
 
 /**
  * YouTube Music InnerTube client inspired by Metrolist's WEB_REMIX flow.
@@ -806,6 +807,8 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         userAgent: String
     ): JSONObject? {
         return withContext(Dispatchers.IO) {
+            val auth = appContext?.let(YouTubeAccountStore::read)
+            applyAccountContext(body, auth)
             val url = URL("$INNER_TUBE_BASE/$path?prettyPrint=false")
             val connection = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -819,6 +822,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                 setRequestProperty("User-Agent", userAgent)
                 setRequestProperty("X-YouTube-Client-Name", clientId)
                 setRequestProperty("X-YouTube-Client-Version", clientVersion)
+                applyAccountHeaders(this, auth)
             }
             try {
                 connection.outputStream.bufferedWriter(Charsets.UTF_8)
@@ -841,6 +845,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
     }
 
     private fun contextObject(): JSONObject {
+        val auth = appContext?.let(YouTubeAccountStore::read)
         return JSONObject().put(
             "client",
             JSONObject()
@@ -848,10 +853,14 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                 .put("clientVersion", WEB_REMIX_CLIENT_VERSION)
                 .put("hl", "en")
                 .put("gl", "US")
+                .apply {
+                    auth?.visitorData?.takeIf { it.isNotBlank() }?.let { put("visitorData", it) }
+                }
         )
     }
 
     private fun contextObjectAndroid(): JSONObject {
+        val auth = appContext?.let(YouTubeAccountStore::read)
         return JSONObject().put(
             "client",
             JSONObject()
@@ -860,10 +869,14 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                 .put("androidSdkVersion", 35)
                 .put("hl", "en")
                 .put("gl", "US")
+                .apply {
+                    auth?.visitorData?.takeIf { it.isNotBlank() }?.let { put("visitorData", it) }
+                }
         )
     }
 
     private fun contextObjectTvEmbedded(): JSONObject {
+        val auth = appContext?.let(YouTubeAccountStore::read)
         return JSONObject().put(
             "client",
             JSONObject()
@@ -871,7 +884,51 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                 .put("clientVersion", TV_EMBEDDED_CLIENT_VERSION)
                 .put("hl", "en")
                 .put("gl", "US")
+                .apply {
+                    auth?.visitorData?.takeIf { it.isNotBlank() }?.let { put("visitorData", it) }
+                }
         )
+    }
+
+    private fun applyAccountContext(body: JSONObject, auth: YouTubeAccountStore.AccountAuth?) {
+        if (auth == null || !auth.isLoggedIn) return
+        val context = body.optJSONObject("context") ?: JSONObject().also { body.put("context", it) }
+        val client = context.optJSONObject("client") ?: JSONObject().also { context.put("client", it) }
+        auth.visitorData.takeIf { it.isNotBlank() }?.let { client.put("visitorData", it) }
+        auth.dataSyncId.takeIf { it.isNotBlank() }?.let {
+            val user = context.optJSONObject("user") ?: JSONObject().also { context.put("user", it) }
+            user.put("onBehalfOfUser", it)
+        }
+    }
+
+    private fun applyAccountHeaders(
+        connection: HttpURLConnection,
+        auth: YouTubeAccountStore.AccountAuth?
+    ) {
+        if (auth == null || !auth.isLoggedIn) return
+        connection.setRequestProperty("Cookie", auth.cookie)
+        connection.setRequestProperty("X-Origin", "https://music.youtube.com")
+        connection.setRequestProperty("X-Goog-AuthUser", "0")
+        buildSapisidHashHeader(auth.cookie)?.let {
+            connection.setRequestProperty("Authorization", it)
+        }
+    }
+
+    private fun buildSapisidHashHeader(cookie: String): String? {
+        val sapisid = cookie
+            .split(';')
+            .map { it.trim() }
+            .firstOrNull { it.startsWith("SAPISID=") }
+            ?.substringAfter('=')
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val timestamp = System.currentTimeMillis() / 1000
+        val input = "$timestamp $sapisid https://music.youtube.com"
+        val digest = MessageDigest.getInstance("SHA-1")
+            .digest(input.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
+        return "SAPISIDHASH ${timestamp}_$digest"
     }
 
     private fun parseShelfItems(root: JSONObject): List<YouTubeVideo> {

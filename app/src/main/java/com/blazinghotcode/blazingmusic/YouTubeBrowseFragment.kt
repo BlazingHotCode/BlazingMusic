@@ -127,6 +127,7 @@ class YouTubeBrowseFragment : Fragment() {
 
             loadedItems = page.items
             artistInfo = page.artistInfo
+            hydrateBrowseChrome()
             adapter.submit(loadedItems)
 
             if (loadedItems.isEmpty()) {
@@ -505,13 +506,17 @@ class YouTubeBrowseFragment : Fragment() {
     }
 
     private fun showItemMenu(item: YouTubeVideo, anchor: View) {
-        if (item.type != YouTubeItemType.ALBUM) return
         val popup = PopupMenu(requireContext(), anchor)
-        popup.menu.add(0, MENU_OPEN_ALBUM, 0, "Open album")
+        when (item.type) {
+            YouTubeItemType.ALBUM -> popup.menu.add(0, MENU_OPEN_BROWSE, 0, "Open album")
+            YouTubeItemType.ARTIST -> popup.menu.add(0, MENU_OPEN_BROWSE, 0, "Open artist")
+            YouTubeItemType.PLAYLIST -> popup.menu.add(0, MENU_OPEN_BROWSE, 0, "Open playlist")
+            else -> return
+        }
         popup.setOnMenuItemClickListener { menu ->
             when (menu.itemId) {
-                MENU_OPEN_ALBUM -> {
-                    if (!item.browseId.isNullOrBlank()) openNestedBrowse(item) else showToast("Album page unavailable")
+                MENU_OPEN_BROWSE -> {
+                    if (!item.browseId.isNullOrBlank()) openNestedBrowse(item) else showToast("Page unavailable")
                     true
                 }
                 else -> false
@@ -546,6 +551,17 @@ class YouTubeBrowseFragment : Fragment() {
 
     private fun openSectionSeeAll(sectionTitle: String, sectionBrowseId: String, sectionBrowseParams: String?) {
         val normalized = sectionTitle.lowercase()
+        val sectionThumb = loadedItems.firstOrNull {
+            it.sectionTitle.equals(sectionTitle, ignoreCase = true) && !it.thumbnailUrl.isNullOrBlank()
+        }?.thumbnailUrl ?: browseThumb
+        val sectionSubtitle = buildString {
+            append(browseTitle)
+            val relatedCount = loadedItems.count { it.sectionTitle.equals(sectionTitle, ignoreCase = true) }
+            if (relatedCount > 0) {
+                append(" • ")
+                append("$relatedCount items")
+            }
+        }
         val sectionType = when {
             normalized.contains("album") || normalized.contains("single") || normalized.contains("ep") -> YouTubeItemType.ALBUM
             normalized.contains("artist") -> YouTubeItemType.ARTIST
@@ -566,13 +582,34 @@ class YouTubeBrowseFragment : Fragment() {
                     browseId = sectionBrowseId,
                     browseParams = sectionBrowseParams,
                     title = sectionTitle,
-                    subtitle = browseTitle,
-                    thumbUrl = browseThumb,
+                    subtitle = sectionSubtitle,
+                    thumbUrl = sectionThumb,
                     type = sectionType
                 )
             )
             .addToBackStack("youtube_browse")
             .commit()
+    }
+
+    private fun hydrateBrowseChrome() {
+        if (browseThumb.isNullOrBlank()) {
+            browseThumb = loadedItems.firstNotNullOfOrNull { it.thumbnailUrl }
+        }
+        if (browseSubtitle.isBlank()) {
+            browseSubtitle = when (browseType) {
+                YouTubeItemType.ARTIST -> listOfNotNull(
+                    artistInfo?.monthlyListeners?.takeIf { it.isNotBlank() },
+                    artistInfo?.subscriberCount?.takeIf { it.isNotBlank() }
+                ).joinToString(" • ").ifBlank { loadedItems.firstOrNull()?.channelTitle.orEmpty() }
+                else -> loadedItems.firstOrNull()?.channelTitle.orEmpty()
+            }
+        }
+        if (browseTitle.isBlank()) {
+            browseTitle = loadedItems.firstOrNull()?.sectionTitle
+                ?: loadedItems.firstOrNull()?.title
+                ?: browseTypeLabelCapitalized()
+        }
+        refreshHeader()
     }
 
     private fun playInApp(item: YouTubeVideo) {
@@ -713,7 +750,7 @@ class YouTubeBrowseFragment : Fragment() {
     }
 
     companion object {
-        private const val MENU_OPEN_ALBUM = 1
+        private const val MENU_OPEN_BROWSE = 1
         private const val RADIO_INITIAL_READY = 10
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60
