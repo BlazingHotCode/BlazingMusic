@@ -30,8 +30,8 @@ android {
         applicationId = "com.blazinghotcode.blazingmusic"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.3.0"
+        versionCode = 4
+        versionName = "1.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testApplicationId = "com.blazinghotcode.blazingmusictest"

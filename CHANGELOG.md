@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2026-03-13
+
+### Changed
+
+- Reworked YouTube playlist handling, including dedicated
+  playlist completion for signed-in playlist surfaces and internal liked-music sync.
+- Updated song overflow actions across player, playlist, browse, and search surfaces so `Add to
+  playlist` appears more consistently.
+- Changed playlist shuffle to use a dedicated one-shot shuffled queue instead of toggling the
+  global shuffle state.
+
+### Fixed
+
+- Fixed YouTube playlist navigation so opening a playlist from the Playlists tab no longer routes
+  back through the wrong tab stack.
+- Improved internal `Liked Music` sync performance by avoiding eager stream resolution for every
+  liked track during sync.
+- Improved YouTube playlist metadata, row indicators, and playlist screen behavior.
+
 ## [1.3.0] - 2026-03-12
 
 ### Added
@@ -16,7 +35,7 @@ All notable changes to this project will be documented in this file.
 - Replaced the direct YouTube liked playlist surface with an internal app playlist that keeps
   YouTube order by default, supports local-only alternate sorting, and hides duplicate liked
   playlist entries from account browsing.
-- Adjusted browse and player controls to better match Metrolist placement and behavior, including
+- Adjusted browse and player controls, including
   progressive queue building and more compact action buttons.
 
 ### Fixed
