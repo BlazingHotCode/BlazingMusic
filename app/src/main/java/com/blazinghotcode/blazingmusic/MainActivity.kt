@@ -150,6 +150,7 @@ class MainActivity : AppCompatActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var currentSongSort = SongSortOption.TITLE
     private var currentBottomTab: BottomTab = BottomTab.HOME
+    private var youtubeRootTab: BottomTab = BottomTab.SEARCH
     private var hasAudioPermission = false
     private var hasNotificationPermission = true
     private var homeFeedJob: Job? = null
@@ -1377,6 +1378,7 @@ class MainActivity : AppCompatActivity() {
         title: String,
         type: YouTubeItemType
     ) {
+        youtubeRootTab = BottomTab.HOME
         openYouTubeBrowse(
             YouTubeVideo(
                 id = "account:$browseId",
@@ -1601,6 +1603,7 @@ class MainActivity : AppCompatActivity() {
 
     fun openHomeTab() {
         val previousTab = currentBottomTab
+        youtubeRootTab = BottomTab.HOME
         currentBottomTab = BottomTab.HOME
         updateBottomNavSelection(BottomTab.HOME)
         if (playlistContainer.visibility != View.VISIBLE && youtubeContainer.visibility != View.VISIBLE) {
@@ -1672,7 +1675,9 @@ class MainActivity : AppCompatActivity() {
                 .filterNot { it.title.isBlank() }
                 .filterNot { item ->
                     val section = item.sectionTitle.orEmpty().lowercase()
-                    section.contains("community") || section.contains("podcast")
+                    section.contains("community") ||
+                        section.contains("podcast") ||
+                        section.contains("music videos for you")
                 }
             homeFeedLastUpdatedLabel = if (homeFeedItems.isNotEmpty()) {
                 "Updated ${currentHomeRefreshLabel()}"
@@ -1867,6 +1872,7 @@ class MainActivity : AppCompatActivity() {
 
     fun openSearchTab(initialQuery: String? = null) {
         val previousTab = currentBottomTab
+        youtubeRootTab = BottomTab.SEARCH
         if (previousTab == BottomTab.SEARCH && youtubeContainer.visibility == View.VISIBLE && initialQuery.isNullOrBlank()) {
             if (supportFragmentManager.backStackEntryCount > 0) {
                 supportFragmentManager.popBackStackImmediate(
@@ -1923,8 +1929,8 @@ class MainActivity : AppCompatActivity() {
             )
             .addToBackStack("youtube_browse")
             .commit()
-        currentBottomTab = BottomTab.SEARCH
-        updateBottomNavSelection(BottomTab.SEARCH)
+        currentBottomTab = youtubeRootTab
+        updateBottomNavSelection(youtubeRootTab)
     }
 
     private fun isForwardTabMove(from: BottomTab, to: BottomTab): Boolean {
@@ -1990,8 +1996,8 @@ class MainActivity : AppCompatActivity() {
         if (youtubeContainer.visibility == View.VISIBLE) {
             if (supportFragmentManager.backStackEntryCount > 0) {
                 supportFragmentManager.popBackStack()
-                currentBottomTab = BottomTab.SEARCH
-                updateBottomNavSelection(BottomTab.SEARCH)
+                currentBottomTab = youtubeRootTab
+                updateBottomNavSelection(youtubeRootTab)
                 return true
             }
             val fragment = supportFragmentManager.findFragmentById(R.id.youtubeContainer) as? YouTubeSearchFragment

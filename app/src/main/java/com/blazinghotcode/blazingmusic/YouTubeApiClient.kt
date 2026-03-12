@@ -1128,6 +1128,12 @@ class YouTubeApiClient(private val appContext: Context? = null) {
                     block(renderer, shelfTitle, shelfBrowseId, shelfBrowseParams)
                 }
 
+                node.optJSONObject("musicTwoRowItemRenderer")?.let { twoRow ->
+                    mapTwoRowRendererToResponsiveLike(twoRow)?.let { mapped ->
+                        block(mapped, shelfTitle, shelfBrowseId, shelfBrowseParams)
+                    }
+                }
+
                 val iterator = node.keys()
                 while (iterator.hasNext()) {
                     val key = iterator.next()
