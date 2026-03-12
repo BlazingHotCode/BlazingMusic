@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.absoluteValue
 
 /**
  * Central playback/state coordinator for songs, queue, player controls, and playlists.
@@ -91,6 +92,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var activeQueue: List<Song> = emptyList()
     private var currentQueueIndexInternal = -1
     private var playlistsInternal: List<Playlist> = emptyList()
+    private var accountRemotePlaylists: List<Playlist> = emptyList()
+    private var accountRemotePlaylistsFingerprint: String? = null
+    private var isRefreshingAccountRemotePlaylists = false
     private val retryingYouTubeVideoIds = mutableSetOf<String>()
     private val playbackListener = object : Player.Listener {
         override fun onIsPlayingChanged(playing: Boolean) {
@@ -683,6 +687,45 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshSpecialPlaylists() {
+        val account = YouTubeAccountStore.read(getApplication<Application>().applicationContext)
+        val fingerprint = if (account.isLoggedIn) {
+            listOf(account.cookie.take(48), account.visitorData, account.dataSyncId).joinToString("|")
+        } else {
+            null
+        }
+
+        if (!account.isLoggedIn) {
+            accountRemotePlaylists = emptyList()
+            accountRemotePlaylistsFingerprint = null
+        } else if (fingerprint != accountRemotePlaylistsFingerprint && !isRefreshingAccountRemotePlaylists) {
+            isRefreshingAccountRemotePlaylists = true
+            viewModelScope.launch {
+                val fetched = runCatching {
+                    youTubeApiClient.browseCollection(
+                        browseId = YouTubeAccountSurfaces.PLAYLISTS_BROWSE_ID,
+                        maxResults = 240
+                    )
+                }.getOrDefault(emptyList())
+
+                accountRemotePlaylists = fetched
+                    .filter { it.type == YouTubeItemType.PLAYLIST && !it.browseId.isNullOrBlank() && it.title.isNotBlank() }
+                    .distinctBy { it.browseId }
+                    .mapIndexed { index, item ->
+                        Playlist(
+                            id = -10_000_000L - index - item.browseId.orEmpty().hashCode().toLong().absoluteValue,
+                            name = item.title,
+                            songPaths = emptyList(),
+                            remoteBrowseId = item.browseId,
+                            remoteBrowseType = YouTubeItemType.PLAYLIST
+                        )
+                    }
+                accountRemotePlaylistsFingerprint = fingerprint
+                isRefreshingAccountRemotePlaylists = false
+                rebuildSystemPlaylists()
+                _playlists.postValue(playlistsInternal)
+            }
+        }
+
         rebuildSystemPlaylists()
         _playlists.value = playlistsInternal
     }
@@ -959,16 +1002,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun rebuildSystemPlaylists() {
         ensureLocalMusicPlaylist()
         val account = YouTubeAccountStore.read(getApplication<Application>().applicationContext)
-        val custom = playlistsInternal.filter { it.id > 0L }
+        val custom = playlistsInternal.filter { it.id > 0L }.sortedByDescending { it.id }
         val system = mutableListOf(playlistsInternal.first { it.id == LOCAL_MUSIC_PLAYLIST_ID })
         if (account.isLoggedIn) {
-            system += Playlist(
-                id = PlaylistSystem.ACCOUNT_PLAYLISTS_ID,
-                name = "YouTube Playlists",
-                songPaths = emptyList(),
-                remoteBrowseId = YouTubeAccountSurfaces.PLAYLISTS_BROWSE_ID,
-                remoteBrowseType = YouTubeItemType.PLAYLIST
-            )
+            system += accountRemotePlaylists
         }
         playlistsInternal = system + custom
     }

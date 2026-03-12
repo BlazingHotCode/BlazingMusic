@@ -39,7 +39,7 @@ class YouTubeAccountHubActivity : AppCompatActivity() {
             finish()
         }
         btnPlaylists.setOnClickListener {
-            startActivity(MainActivity.accountBrowseIntent(this, YouTubeAccountSurfaces.PLAYLISTS_BROWSE_ID, "Playlists", YouTubeItemType.PLAYLIST))
+            startActivity(MainActivity.playlistsTabIntent(this))
             finish()
         }
         btnAlbums.setOnClickListener {

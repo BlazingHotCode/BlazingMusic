@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
         private const val EXTRA_OPEN_ACCOUNT_BROWSE_ID = "open_account_browse_id"
         private const val EXTRA_OPEN_ACCOUNT_TITLE = "open_account_title"
         private const val EXTRA_OPEN_ACCOUNT_TYPE = "open_account_type"
+        private const val EXTRA_OPEN_PLAYLISTS_TAB = "open_playlists_tab"
         private const val MENU_PLAY_NOW = 2001
         private const val MENU_PLAY_NEXT = 2002
         private const val MENU_ADD_QUEUE = 2003
@@ -100,6 +101,12 @@ class MainActivity : AppCompatActivity() {
                 .putExtra(EXTRA_OPEN_ACCOUNT_BROWSE_ID, browseId)
                 .putExtra(EXTRA_OPEN_ACCOUNT_TITLE, title)
                 .putExtra(EXTRA_OPEN_ACCOUNT_TYPE, type.ordinal)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+
+        fun playlistsTabIntent(context: Context): Intent {
+            return Intent(context, MainActivity::class.java)
+                .putExtra(EXTRA_OPEN_PLAYLISTS_TAB, true)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
 
@@ -227,6 +234,7 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         setupBackNavigation()
         checkPermissions()
+        handleOpenPlaylistsIntent(intent)
         handleAccountBrowseIntent(intent)
         handlePlaybackActionIntent(intent)
     }
@@ -243,6 +251,7 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleOpenPlaylistsIntent(intent)
         handleAccountBrowseIntent(intent)
         handlePlaybackActionIntent(intent)
     }
@@ -1450,6 +1459,13 @@ class MainActivity : AppCompatActivity() {
         safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_BROWSE_ID)
         safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_TITLE)
         safeIntent.removeExtra(EXTRA_OPEN_ACCOUNT_TYPE)
+    }
+
+    private fun handleOpenPlaylistsIntent(intent: Intent?) {
+        val safeIntent = intent ?: return
+        if (!safeIntent.getBooleanExtra(EXTRA_OPEN_PLAYLISTS_TAB, false)) return
+        openPlaylistsTab()
+        safeIntent.removeExtra(EXTRA_OPEN_PLAYLISTS_TAB)
     }
 
     private fun openAccountBrowseSurface(
