@@ -390,6 +390,8 @@ class YouTubeBrowseFragment : Fragment() {
                         val streamUrl = withTimeoutOrNull<String?>(RADIO_RESOLVE_TIMEOUT_MS) {
                             runCatching { apiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull()
                         } ?: return@async null
+                        val playable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
+                        if (!playable) return@async null
                         index to item.toSong(streamUrl)
                     }
                 }

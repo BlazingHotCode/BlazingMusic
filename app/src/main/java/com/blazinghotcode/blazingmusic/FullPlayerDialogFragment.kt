@@ -480,6 +480,8 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
     private suspend fun resolvePlayableRadioSong(item: YouTubeVideo): Song? {
         val videoId = item.videoId ?: return null
         val streamUrl = runCatching { apiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull() ?: return null
+        val playable = runCatching { apiClient.isStreamPlayable(streamUrl) }.getOrDefault(false)
+        if (!playable) return null
         return Song(
             id = (item.id.hashCode().toLong() and 0x7fffffffL) + 10_000_000_000L,
             title = item.title,
