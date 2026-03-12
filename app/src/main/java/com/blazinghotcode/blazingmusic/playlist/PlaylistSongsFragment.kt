@@ -590,8 +590,33 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             }
         }
         tvEmpty.visibility = if (filteredSongs.isEmpty()) View.VISIBLE else View.GONE
-        val countWord = if (filteredSongs.size == 1) "song" else "songs"
-        tvSubtitle.text = "${filteredSongs.size} $countWord"
+        updatePlaylistSubtitle(query)
+    }
+
+    private fun updatePlaylistSubtitle(query: String) {
+        val totalSongs = playlistSongs.size
+        val totalDurationMs = playlistSongs.sumOf { it.duration.coerceAtLeast(0L) }
+        val totalCountLabel = "$totalSongs ${if (totalSongs == 1) "song" else "songs"}"
+        val durationLabel = totalDurationMs.takeIf { it > 0L }?.let(::formatPlaylistDuration)
+
+        tvSubtitle.text = when {
+            query.isNotBlank() && filteredSongs.size != totalSongs -> {
+                val filteredLabel = "${filteredSongs.size} shown"
+                listOf(filteredLabel, totalCountLabel, durationLabel).filterNotNull().joinToString(" • ")
+            }
+            else -> listOf(totalCountLabel, durationLabel).filterNotNull().joinToString(" • ")
+        }
+    }
+
+    private fun formatPlaylistDuration(durationMs: Long): String {
+        val totalMinutes = durationMs / 1000L / 60L
+        val hours = totalMinutes / 60L
+        val minutes = totalMinutes % 60L
+        return when {
+            hours > 0L && minutes > 0L -> "${hours}h ${minutes}m"
+            hours > 0L -> "${hours}h"
+            else -> "${minutes}m"
+        }
     }
 
     private fun scrollSongsToSection(section: Char) {

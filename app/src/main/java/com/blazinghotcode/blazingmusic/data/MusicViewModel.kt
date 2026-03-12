@@ -38,6 +38,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         private const val LOCAL_MUSIC_PLAYLIST_ID = PlaylistSystem.LOCAL_MUSIC_ID
         private const val YOUTUBE_LIKED_MUSIC_PLAYLIST_ID = PlaylistSystem.YOUTUBE_LIKED_MUSIC_ID
         private const val YOUTUBE_LIKED_MAX_RESULTS = 500
+        private const val YOUTUBE_PLACEHOLDER_URL_PREFIX = "https://music.youtube.com/watch?v="
         private const val PREVIOUS_RESTART_THRESHOLD_MS = 4_000L
         private const val TAG = "MusicViewModel"
     }
@@ -307,7 +308,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _shouldRestartQueue.value = false
         _currentSong.value = songToPlay
         persistQueueState(positionOverrideMs = 0L)
-        startPlayback()
+        viewModelScope.launch {
+            resolveDeferredQueueSongIfNeeded(resolvedIndex)
+            startPlayback()
+        }
     }
 
     private fun startPlayback() {
@@ -328,10 +332,19 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 when (player.playbackState) {
                     Player.STATE_IDLE -> {
                         if (player.mediaItemCount == 0 && activeQueue.isNotEmpty()) {
-                            val mediaItems = activeQueue.map { mediaItemForSong(it) }
                             val startIndex = currentQueueIndexInternal
-                                .coerceIn(0, mediaItems.lastIndex.coerceAtLeast(0))
-                            player.setMediaItems(mediaItems, startIndex, getCurrentPosition())
+                                .coerceAtLeast(0)
+                                .coerceAtMost(activeQueue.lastIndex.coerceAtLeast(0))
+                            viewModelScope.launch {
+                                resolveDeferredQueueSongIfNeeded(startIndex)
+                                val refreshedItems = activeQueue.map { mediaItemForSong(it) }
+                                val refreshedIndex = currentQueueIndexInternal
+                                    .coerceIn(0, refreshedItems.lastIndex.coerceAtLeast(0))
+                                player.setMediaItems(refreshedItems, refreshedIndex, getCurrentPosition())
+                                player.prepare()
+                                player.play()
+                            }
+                            return@let
                         }
                         player.prepare()
                         player.play()
@@ -869,7 +882,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     val existing = existingByVideoId[videoId]
                     val streamUrl = existing?.path?.takeIf { it.isNotBlank() }
                         ?: runCatching { youTubeApiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull()
-                    if (streamUrl.isNullOrBlank()) return@forEach
                     add(
                         Song(
                             id = existing?.id ?: (-20_000_000L - videoId.hashCode().toLong().absoluteValue),
@@ -878,7 +890,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                             album = existing?.album ?: "YouTube Music",
                             duration = existing?.duration ?: 0L,
                             dateAddedSeconds = existing?.dateAddedSeconds ?: 0L,
-                            path = streamUrl,
+                            path = streamUrl ?: placeholderYouTubeSongPath(videoId),
                             albumArtUri = item.thumbnailUrl ?: existing?.albumArtUri,
                             sourceVideoId = videoId,
                             sourcePlaylistId = item.sourcePlaylistId ?: PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID,
@@ -897,6 +909,22 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun buildShuffledQueue(queue: List<Song>): List<Song> {
         if (queue.isEmpty()) return queue
         return queue.shuffled()
+    }
+
+    private suspend fun resolveDeferredQueueSongIfNeeded(index: Int) {
+        val targetSong = activeQueue.getOrNull(index) ?: return
+        val videoId = targetSong.sourceVideoId?.takeIf { it.isNotBlank() } ?: return
+        if (!isDeferredYouTubePath(targetSong.path)) return
+        val resolvedUrl = runCatching { youTubeApiClient.resolveAudioStreamUrlFast(videoId) }.getOrNull() ?: return
+        val updatedSong = targetSong.copy(path = resolvedUrl)
+        val mutableQueue = activeQueue.toMutableList()
+        mutableQueue[index] = updatedSong
+        activeQueue = mutableQueue.toList()
+        _queue.postValue(activeQueue)
+        if (currentQueueIndexInternal == index) {
+            _currentSong.postValue(updatedSong)
+        }
+        persistQueueState()
     }
 
     private fun buildShuffledUpcomingQueue(queue: List<Song>, currentIndex: Int): List<Song> {
@@ -1190,6 +1218,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         return song.copy(
             sourcePlaylistId = PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID
         )
+    }
+
+    private fun placeholderYouTubeSongPath(videoId: String): String {
+        return "$YOUTUBE_PLACEHOLDER_URL_PREFIX$videoId"
+    }
+
+    private fun isDeferredYouTubePath(path: String): Boolean {
+        return path.startsWith(YOUTUBE_PLACEHOLDER_URL_PREFIX)
     }
 
     private fun youtubeLikedMusicPlaylist(): Playlist {

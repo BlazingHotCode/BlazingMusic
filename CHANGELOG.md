@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file.
   Android 13+ notification permission handling.
 - UI and test infrastructure upgrades, including a dedicated `uitest` build type and expanded
   unit/UI test coverage.
+- Internal `Liked Music` playlist synced from YouTube likes, with Metrolist-style heart actions in
+  player controls and song overflow menus.
+- Signed-in YouTube playlist management improvements, including synced remove/reorder actions,
+  playlist artwork loading, manual liked-music sync, and playlist metadata display.
 
 ### Changed
 
@@ -26,6 +30,11 @@ All notable changes to this project will be documented in this file.
 - Enhanced YouTube performance by parallelizing Mix/Radio resolution, caching streams, and
   progressively stitching radio queues.
 - Upgraded Android/Gradle toolchain and cleaned AGP warning flags.
+- Replaced the direct YouTube liked playlist surface with an internal app playlist that keeps
+  YouTube order by default, supports local-only alternate sorting, and hides duplicate liked
+  playlist entries from account browsing.
+- Adjusted browse and player controls to better match Metrolist placement and behavior, including
+  progressive queue building and more compact action buttons.
 
 ### Fixed
 
@@ -35,6 +44,10 @@ All notable changes to this project will be documented in this file.
   song artwork normalization.
 - Fixed Android/Media3 compatibility warnings by aligning annotation usage and opting `MusicService`
   into unstable APIs where required.
+- Reduced queue stutter by switching to append-only queue updates with heavier startup buffering.
+- Fixed YouTube playlist song menus, synced playlist editing behavior, liked-songs visibility,
+  now-playing indicators for YouTube tracks, and playlist subtitle details for song count and total
+  duration.
 
 ## [1.1.0] - 2026-03-05
 

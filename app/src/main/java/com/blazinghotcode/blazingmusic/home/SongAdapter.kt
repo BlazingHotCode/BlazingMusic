@@ -18,7 +18,7 @@ class SongAdapter(
 ) : ListAdapter<Song, SongAdapter.SongViewHolder>(SongDiffCallback()) {
     private var isSelectionModeEnabled = false
     private val selectedSongPaths = linkedSetOf<String>()
-    private var currentSongPath: String? = null
+    private var currentSongKey: String? = null
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
         val binding = ItemSongBinding.inflate(
@@ -45,9 +45,9 @@ class SongAdapter(
     fun getSelectedSongs(): List<Song> = currentList.filter { it.path in selectedSongPaths }
 
     fun setCurrentSong(song: Song?) {
-        val newPath = song?.path
-        if (currentSongPath == newPath) return
-        currentSongPath = newPath
+        val newKey = currentSongIdentity(song)
+        if (currentSongKey == newKey) return
+        currentSongKey = newKey
         notifyDataSetChanged()
     }
 
@@ -105,7 +105,7 @@ class SongAdapter(
 
         fun bind(song: Song) {
             boundSong = song
-            val isNowPlaying = song.path == currentSongPath
+            val isNowPlaying = songIdentity(song) == currentSongKey
             binding.tvTitle.text = song.title
             binding.tvArtist.text = song.artist
             binding.tvDuration.text = PlaybackTimeFormatter.formatDuration(song.duration)
@@ -201,5 +201,11 @@ class SongAdapter(
         override fun areContentsTheSame(oldItem: Song, newItem: Song): Boolean {
             return oldItem == newItem
         }
+    }
+
+    private fun currentSongIdentity(song: Song?): String? = song?.let(::songIdentity)
+
+    private fun songIdentity(song: Song): String {
+        return song.sourceVideoId?.takeIf { it.isNotBlank() } ?: song.path
     }
 }
