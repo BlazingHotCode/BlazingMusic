@@ -198,6 +198,74 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         )
     }
 
+    suspend fun removeFromPlaylist(
+        playlistId: String,
+        videoId: String,
+        setVideoId: String
+    ): Boolean {
+        if (playlistId.isBlank() || videoId.isBlank() || setVideoId.isBlank()) return false
+        val actions = JSONArray().put(
+            JSONObject()
+                .put("action", "ACTION_REMOVE_VIDEO")
+                .put("setVideoId", setVideoId)
+                .put("removedVideoId", videoId)
+        )
+        return editPlaylist(playlistId, actions)
+    }
+
+    suspend fun moveSongInPlaylist(
+        playlistId: String,
+        setVideoId: String,
+        successorSetVideoId: String?
+    ): Boolean {
+        if (playlistId.isBlank() || setVideoId.isBlank()) return false
+        val action = JSONObject()
+            .put("action", "ACTION_MOVE_VIDEO_BEFORE")
+            .put("setVideoId", setVideoId)
+        successorSetVideoId?.takeIf { it.isNotBlank() }?.let {
+            action.put("movedSetVideoIdSuccessor", it)
+        }
+        return editPlaylist(playlistId, JSONArray().put(action))
+    }
+
+    suspend fun likeVideo(videoId: String, like: Boolean): Boolean {
+        if (videoId.isBlank()) return false
+        val path = if (like) "like/like" else "like/removelike"
+        val response = post(
+            path = path,
+            body = JSONObject()
+                .put("context", contextObject())
+                .put(
+                    "target",
+                    JSONObject()
+                        .put("videoId", videoId)
+                )
+        ) ?: return false
+
+        val status = response.optString("status", "")
+        if (status.equals("STATUS_SUCCEEDED", ignoreCase = true)) return true
+        if (response.has("actions") || response.has("feedbackResponses")) return true
+        return response.keys().hasNext()
+    }
+
+    private suspend fun editPlaylist(playlistId: String, actions: JSONArray): Boolean {
+        val normalizedId = playlistId.removePrefix("VL").trim()
+        if (normalizedId.isBlank() || actions.length() == 0) return false
+        val response = post(
+            path = "browse/edit_playlist",
+            body = JSONObject()
+                .put("context", contextObject())
+                .put("playlistId", normalizedId)
+                .put("actions", actions)
+        ) ?: return false
+
+        val status = response.optString("status", "")
+        if (status.equals("STATUS_SUCCEEDED", ignoreCase = true)) return true
+        if (response.has("playlistEditResults")) return true
+        if (response.has("actions")) return true
+        return response.keys().hasNext()
+    }
+
     suspend fun fetchRadioCandidates(
         videoId: String,
         playlistId: String? = null,

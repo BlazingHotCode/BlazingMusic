@@ -69,6 +69,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
     private lateinit var btnQueue: ImageButton
     private lateinit var btnShuffle: ImageButton
     private lateinit var btnRepeat: ImageButton
+    private lateinit var btnLike: ImageButton
     private lateinit var seekBar: SeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvTotalTime: TextView
@@ -126,6 +127,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         btnQueue = root.findViewById(R.id.btnQueue)
         btnShuffle = root.findViewById(R.id.btnShuffle)
         btnRepeat = root.findViewById(R.id.btnRepeat)
+        btnLike = root.findViewById(R.id.btnLike)
         seekBar = root.findViewById(R.id.seekBar)
         tvCurrentTime = root.findViewById(R.id.tvCurrentTime)
         tvTotalTime = root.findViewById(R.id.tvTotalTime)
@@ -270,6 +272,19 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         btnNext.setOnClickListener { viewModel.playNext() }
         btnShuffle.setOnClickListener { viewModel.toggleShuffle() }
         btnRepeat.setOnClickListener { viewModel.toggleRepeat() }
+        btnLike.setOnClickListener {
+            val song = viewModel.currentSong.value
+            if (!viewModel.canToggleSongLike(song)) {
+                showToast("Sign in to like YouTube songs")
+                return@setOnClickListener
+            }
+            val targetSong = song ?: return@setOnClickListener
+            val willLike = !viewModel.isSongLiked(targetSong)
+            if (viewModel.setSongLiked(targetSong, willLike)) {
+                updateLikeUi(targetSong)
+                showToast(if (willLike) "Added to Liked Music" else "Removed from Liked Music")
+            }
+        }
         MiniPlayerExpandGestureController(
             playerLayout = playerLayout,
             toPx = { value -> value * resources.displayMetrics.density },
@@ -296,6 +311,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
                 playerLayout.visibility = View.VISIBLE
                 MiniPlayerSongUi.bindSong(tvSongTitle, tvArtist, ivAlbumArt, it)
             }
+            updateLikeUi(song)
         }
 
         viewModel.isPlaying.observe(viewLifecycleOwner) {
@@ -320,6 +336,7 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
         viewModel.isShuffleEnabled.observe(viewLifecycleOwner) { enabled -> updateShuffleUi(enabled) }
         viewModel.repeatMode.observe(viewLifecycleOwner) { mode -> updateRepeatUi(mode) }
+        viewModel.likedSongsRevision.observe(viewLifecycleOwner) { updateLikeUi(viewModel.currentSong.value) }
     }
 
     private fun showSongOptionsMenu(song: Song, anchor: View) {
@@ -332,6 +349,9 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         ).apply {
             menu.add(Menu.NONE, 1, Menu.NONE, "Play next")
             menu.add(Menu.NONE, 2, Menu.NONE, "Add to queue")
+            if (viewModel.canToggleSongLike(song)) {
+                menu.add(Menu.NONE, 5, Menu.NONE, if (viewModel.isSongLiked(song)) "Unlike" else "Like")
+            }
             if (canEditCurrentPlaylist) {
                 menu.add(Menu.NONE, 3, Menu.NONE, "Remove from playlist")
             }
@@ -344,6 +364,16 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
                     }
                     2 -> {
                         viewModel.addSongToQueue(song)
+                        true
+                    }
+                    5 -> {
+                        val willLike = !viewModel.isSongLiked(song)
+                        if (viewModel.setSongLiked(song, willLike)) {
+                            updateLikeUi(viewModel.currentSong.value)
+                            showToast(if (willLike) "Added to Liked Music" else "Removed from Liked Music")
+                        } else {
+                            showToast("Sign in to like YouTube songs")
+                        }
                         true
                     }
                     3 -> {
@@ -645,6 +675,15 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
             context = requireContext(),
             button = btnRepeat,
             mode = mode
+        )
+    }
+
+    private fun updateLikeUi(song: Song?) {
+        PlaybackControlUi.bindLikeControl(
+            context = requireContext(),
+            button = btnLike,
+            isLiked = viewModel.isSongLiked(song),
+            isVisible = viewModel.canToggleSongLike(song)
         )
     }
 

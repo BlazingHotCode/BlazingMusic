@@ -55,6 +55,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnNext: ImageButton
     private lateinit var btnRepeat: ImageButton
+    private lateinit var btnLike: ImageButton
     private lateinit var btnQueue: ImageButton
     private lateinit var btnMore: ImageButton
     private lateinit var fullPlayerRoot: View
@@ -127,6 +128,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         btnPlayPause = root.findViewById(R.id.btnPlayPause)
         btnNext = root.findViewById(R.id.btnNext)
         btnRepeat = root.findViewById(R.id.btnRepeat)
+        btnLike = root.findViewById(R.id.btnLike)
         btnQueue = root.findViewById(R.id.btnQueue)
         btnMore = root.findViewById(R.id.btnMore)
         bottomGestureZone = root.findViewById(R.id.bottomGestureZone)
@@ -157,6 +159,19 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
         btnNext.setOnClickListener { viewModel.playNext() }
         btnShuffle.setOnClickListener { viewModel.toggleShuffle() }
         btnRepeat.setOnClickListener { viewModel.toggleRepeat() }
+        btnLike.setOnClickListener {
+            val song = viewModel.currentSong.value
+            if (!viewModel.canToggleSongLike(song)) {
+                showToast("Sign in to like YouTube songs")
+                return@setOnClickListener
+            }
+            val targetSong = song ?: return@setOnClickListener
+            val willLike = !viewModel.isSongLiked(targetSong)
+            if (viewModel.setSongLiked(targetSong, willLike)) {
+                updateLikeUi(targetSong)
+                showToast(if (willLike) "Added to Liked Music" else "Removed from Liked Music")
+            }
+        }
         btnQueue.setOnClickListener { openQueueSheet() }
         btnMore.setOnClickListener { showOverflowMenu() }
         setupDragToDismiss()
@@ -340,6 +355,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
                     transformations(RoundedCornersTransformation(28f))
                 }
             } ?: ivAlbumArt.setImageResource(R.drawable.ml_library_music)
+            updateLikeUi(song)
         }
 
         viewModel.isPlaying.observe(viewLifecycleOwner) {
@@ -363,6 +379,10 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
 
         viewModel.repeatMode.observe(viewLifecycleOwner) { mode ->
             updateRepeatUi(mode)
+        }
+
+        viewModel.likedSongsRevision.observe(viewLifecycleOwner) {
+            updateLikeUi(viewModel.currentSong.value)
         }
 
         viewModel.queue.observe(viewLifecycleOwner) { queueSnapshot = it }
@@ -580,6 +600,15 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
             context = requireContext(),
             button = btnRepeat,
             mode = mode
+        )
+    }
+
+    private fun updateLikeUi(song: Song?) {
+        PlaybackControlUi.bindLikeControl(
+            context = requireContext(),
+            button = btnLike,
+            isLiked = viewModel.isSongLiked(song),
+            isVisible = viewModel.canToggleSongLike(song)
         )
     }
 

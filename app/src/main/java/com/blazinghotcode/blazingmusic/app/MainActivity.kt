@@ -82,7 +82,8 @@ class MainActivity : AppCompatActivity() {
         private const val MENU_PLAY_NOW = 2001
         private const val MENU_PLAY_NEXT = 2002
         private const val MENU_ADD_QUEUE = 2003
-        private const val MENU_OPEN_PAGE = 2004
+        private const val MENU_TOGGLE_LIKE = 2004
+        private const val MENU_OPEN_PAGE = 2005
         private const val HOME_MENU_ACCOUNT_LABEL = 3000
         private const val HOME_MENU_SIGN_IN = 3001
         private const val HOME_MENU_HISTORY = 3002
@@ -128,6 +129,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnQueue: ImageButton
     private lateinit var btnShuffle: ImageButton
     private lateinit var btnRepeat: ImageButton
+    private lateinit var btnLike: ImageButton
     private lateinit var bottomNav: View
     private lateinit var navHome: View
     private lateinit var navSearch: View
@@ -274,6 +276,7 @@ class MainActivity : AppCompatActivity() {
         btnQueue = findViewById(R.id.btnQueue)
         btnShuffle = findViewById(R.id.btnShuffle)
         btnRepeat = findViewById(R.id.btnRepeat)
+        btnLike = findViewById(R.id.btnLike)
         bottomNav = findViewById(R.id.bottomNav)
         navHome = findViewById(R.id.navHome)
         navSearch = findViewById(R.id.navSearch)
@@ -443,6 +446,20 @@ class MainActivity : AppCompatActivity() {
             viewModel.toggleRepeat()
         }
 
+        btnLike.setOnClickListener {
+            val song = viewModel.currentSong.value
+            if (!viewModel.canToggleSongLike(song)) {
+                showToast("Sign in to like YouTube songs")
+                return@setOnClickListener
+            }
+            val targetSong = song ?: return@setOnClickListener
+            val willLike = !viewModel.isSongLiked(targetSong)
+            if (viewModel.setSongLiked(targetSong, willLike)) {
+                updateLikeUi(targetSong)
+                showToast(if (willLike) "Added to Liked Music" else "Removed from Liked Music")
+            }
+        }
+
         MiniPlayerExpandGestureController(
             playerLayout = playerLayout,
             toPx = { value -> value * resources.displayMetrics.density },
@@ -529,6 +546,7 @@ class MainActivity : AppCompatActivity() {
                 playerLayout.visibility = View.VISIBLE
                 MiniPlayerSongUi.bindSong(tvSongTitle, tvArtist, ivAlbumArt, it)
             }
+            updateLikeUi(song)
         }
 
         viewModel.isPlaying.observe(this) { isPlaying ->
@@ -547,6 +565,10 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.repeatMode.observe(this) { repeatMode ->
             updateRepeatUi(repeatMode)
+        }
+
+        viewModel.likedSongsRevision.observe(this) {
+            updateLikeUi(viewModel.currentSong.value)
         }
 
         viewModel.queue.observe(this) { queue ->
@@ -810,6 +832,9 @@ class MainActivity : AppCompatActivity() {
             menu.add(Menu.NONE, 2, Menu.NONE, "Play next")
             menu.add(Menu.NONE, 1, Menu.NONE, "Add to queue")
             menu.add(Menu.NONE, 3, Menu.NONE, "Add to playlist")
+            if (viewModel.canToggleSongLike(song)) {
+                menu.add(Menu.NONE, 5, Menu.NONE, if (viewModel.isSongLiked(song)) "Unlike" else "Like")
+            }
             menu.add(Menu.NONE, 4, Menu.NONE, "Select multiple")
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
@@ -823,6 +848,16 @@ class MainActivity : AppCompatActivity() {
                     }
                     3 -> {
                         showAddSongToPlaylistDialog(song)
+                        true
+                    }
+                    5 -> {
+                        val willLike = !viewModel.isSongLiked(song)
+                        if (viewModel.setSongLiked(song, willLike)) {
+                            updateLikeUi(viewModel.currentSong.value)
+                            showToast(if (willLike) "Added to Liked Music" else "Removed from Liked Music")
+                        } else {
+                            showToast("Sign in to like YouTube songs")
+                        }
                         true
                     }
                     4 -> {
@@ -1487,6 +1522,15 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun updateLikeUi(song: Song?) {
+        PlaybackControlUi.bindLikeControl(
+            context = this,
+            button = btnLike,
+            isLiked = viewModel.isSongLiked(song),
+            isVisible = viewModel.canToggleSongLike(song)
+        )
+    }
+
     private fun requestAudioPermissionFromState() {
         val permission = audioReadPermission()
         if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
@@ -1913,6 +1957,14 @@ class MainActivity : AppCompatActivity() {
                 popup.menu.add(0, MENU_PLAY_NOW, 0, "Play now")
                 popup.menu.add(0, MENU_PLAY_NEXT, 1, "Play next")
                 popup.menu.add(0, MENU_ADD_QUEUE, 2, "Add to queue")
+                if (!item.videoId.isNullOrBlank() && viewModel.canToggleSongLike(item.toPlaceholderSong())) {
+                    popup.menu.add(
+                        0,
+                        MENU_TOGGLE_LIKE,
+                        3,
+                        if (viewModel.isVideoLiked(item.videoId)) "Unlike" else "Like"
+                    )
+                }
             }
             YouTubeItemType.ALBUM, YouTubeItemType.ARTIST, YouTubeItemType.PLAYLIST -> {
                 popup.menu.add(0, MENU_OPEN_PAGE, 0, "Open")
@@ -1931,6 +1983,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 MENU_ADD_QUEUE -> {
                     queueHomeFeedItem(item, playNext = false)
+                    true
+                }
+                MENU_TOGGLE_LIKE -> {
+                    toggleHomeFeedItemLike(item)
                     true
                 }
                 MENU_OPEN_PAGE -> {
@@ -1974,6 +2030,44 @@ class MainActivity : AppCompatActivity() {
                 showToast("Added to queue")
             }
         }
+    }
+
+    private fun toggleHomeFeedItemLike(item: YouTubeVideo) {
+        val placeholderSong = item.toPlaceholderSong()
+        if (!viewModel.canToggleSongLike(placeholderSong)) {
+            showToast("Sign in to like YouTube songs")
+            return
+        }
+        val willLike = !viewModel.isVideoLiked(item.videoId)
+        if (!willLike) {
+            if (viewModel.setSongLiked(placeholderSong, liked = false)) {
+                showToast("Removed from Liked Music")
+            }
+            return
+        }
+
+        lifecycleScope.launch {
+            val streamUrl = runCatching { youTubeApiClient.resolveAudioStreamUrl(item.videoId ?: return@launch) }.getOrNull()
+            val song = if (streamUrl.isNullOrBlank()) item.toPlaceholderSong() else item.toSong(streamUrl)
+            if (viewModel.setSongLiked(song, liked = true)) {
+                showToast("Added to Liked Music")
+            }
+        }
+    }
+
+    private fun YouTubeVideo.toPlaceholderSong(): Song {
+        val videoId = videoId.orEmpty()
+        return Song(
+            id = videoId.hashCode().toLong(),
+            title = title,
+            artist = channelTitle.ifBlank { "YouTube Music" },
+            album = sectionTitle ?: "YouTube Music",
+            duration = 0L,
+            dateAddedSeconds = 0L,
+            path = "https://music.youtube.com/watch?v=$videoId",
+            albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(thumbnailUrl, videoId),
+            sourceVideoId = videoId
+        )
     }
 
     private fun YouTubeVideo.toSong(streamUrl: String): Song {

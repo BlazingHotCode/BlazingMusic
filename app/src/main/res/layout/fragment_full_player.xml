@@ -189,12 +189,26 @@
         android:id="@+id/btnRepeat"
         android:layout_width="32dp"
         android:layout_height="32dp"
+        android:layout_marginEnd="8dp"
         android:background="@android:color/transparent"
         android:contentDescription="Repeat"
         android:src="@drawable/ml_repeat"
         app:layout_constraintBottom_toBottomOf="@id/btnShuffle"
-        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btnLike"
         app:layout_constraintStart_toEndOf="@id/btnNext"
+        app:layout_constraintTop_toTopOf="@id/btnShuffle"
+        app:tint="@color/text_secondary" />
+
+    <ImageButton
+        android:id="@+id/btnLike"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:background="@android:color/transparent"
+        android:contentDescription="Like"
+        android:src="@drawable/ic_heart_outline"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/btnShuffle"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/btnShuffle"
         app:tint="@color/text_secondary" />
 

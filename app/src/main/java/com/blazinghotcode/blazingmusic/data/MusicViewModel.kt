@@ -91,6 +91,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _playlists = MutableLiveData<List<Playlist>>()
     val playlists: LiveData<List<Playlist>> = _playlists
 
+    private val _likedSongsRevision = MutableLiveData(0)
+    val likedSongsRevision: LiveData<Int> = _likedSongsRevision
+
     private var normalQueue: List<Song> = emptyList()
     private var activeQueue: List<Song> = emptyList()
     private var currentQueueIndexInternal = -1
@@ -100,6 +103,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var accountRemotePlaylistsFingerprint: String? = null
     private var isRefreshingAccountRemotePlaylists = false
     private var isRefreshingAccountLikedSongs = false
+    private val pendingLikeRequests = mutableSetOf<String>()
     private val retryingYouTubeVideoIds = mutableSetOf<String>()
     private val playbackListener = object : Player.Listener {
         override fun onIsPlayingChanged(playing: Boolean) {
@@ -713,6 +717,48 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
+    fun canToggleSongLike(song: Song?): Boolean {
+        val videoId = song?.sourceVideoId?.takeIf { it.isNotBlank() } ?: return false
+        val account = YouTubeAccountStore.read(getApplication<Application>().applicationContext)
+        return account.isLoggedIn && videoId.isNotBlank()
+    }
+
+    fun isSongLiked(song: Song?): Boolean {
+        return isVideoLiked(song?.sourceVideoId)
+    }
+
+    fun isVideoLiked(videoId: String?): Boolean {
+        val normalized = videoId?.takeIf { it.isNotBlank() } ?: return false
+        return accountLikedSongs.any { it.sourceVideoId == normalized }
+    }
+
+    fun setSongLiked(song: Song, liked: Boolean): Boolean {
+        val videoId = song.sourceVideoId?.takeIf { it.isNotBlank() } ?: return false
+        val account = YouTubeAccountStore.read(getApplication<Application>().applicationContext)
+        if (!account.isLoggedIn) return false
+        if (!liked && !isVideoLiked(videoId)) return true
+        if (videoId in pendingLikeRequests) return false
+
+        val previousSongs = accountLikedSongs
+        val normalizedSong = normalizedLikedSong(song)
+        accountLikedSongs = when {
+            liked -> listOf(normalizedSong) + accountLikedSongs.filterNot { it.sourceVideoId == videoId }
+            else -> accountLikedSongs.filterNot { it.sourceVideoId == videoId }
+        }
+        publishLikedSongsState()
+        pendingLikeRequests += videoId
+
+        viewModelScope.launch {
+            val success = runCatching { youTubeApiClient.likeVideo(videoId, liked) }.getOrDefault(false)
+            pendingLikeRequests.remove(videoId)
+            if (!success) {
+                accountLikedSongs = previousSongs
+                publishLikedSongsState()
+            }
+        }
+        return true
+    }
+
     fun getPlaylistSongs(playlistId: Long): List<Song> {
         if (playlistId == LOCAL_MUSIC_PLAYLIST_ID) {
             return (_songs.value ?: normalQueue).distinctBy { it.path }
@@ -739,7 +785,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             accountRemotePlaylists = emptyList()
             accountLikedSongs = emptyList()
             accountRemotePlaylistsFingerprint = null
-            persistYouTubeLikedSongs(emptyList())
+            publishLikedSongsState()
         } else if (fingerprint != accountRemotePlaylistsFingerprint && !isRefreshingAccountRemotePlaylists) {
             isRefreshingAccountRemotePlaylists = true
             viewModelScope.launch {
@@ -805,7 +851,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
         if (fetched.isEmpty()) {
             accountLikedSongs = emptyList()
-            persistYouTubeLikedSongs(emptyList())
+            publishLikedSongsState()
             return
         }
 
@@ -845,7 +891,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         accountLikedSongs = syncedSongs
-        persistYouTubeLikedSongs(syncedSongs)
+        publishLikedSongsState()
     }
 
     private fun buildShuffledQueue(queue: List<Song>): List<Song> {
@@ -1131,6 +1177,19 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit()
             .putString(KEY_YOUTUBE_LIKED_SONGS_JSON, jsonArray.toString())
             .commit()
+    }
+
+    private fun publishLikedSongsState() {
+        persistYouTubeLikedSongs(accountLikedSongs)
+        rebuildSystemPlaylists()
+        _playlists.postValue(playlistsInternal)
+        _likedSongsRevision.postValue((_likedSongsRevision.value ?: 0) + 1)
+    }
+
+    private fun normalizedLikedSong(song: Song): Song {
+        return song.copy(
+            sourcePlaylistId = PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID
+        )
     }
 
     private fun youtubeLikedMusicPlaylist(): Playlist {

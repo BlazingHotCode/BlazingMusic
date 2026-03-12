@@ -79,6 +79,27 @@ object PlaybackControlUi {
         }
     }
 
+    fun bindLikeControl(
+        context: Context,
+        button: ImageButton,
+        isLiked: Boolean,
+        isVisible: Boolean
+    ) {
+        button.visibility = if (isVisible) View.VISIBLE else View.GONE
+        if (!isVisible) return
+        button.setImageResource(if (isLiked) R.drawable.ic_heart else R.drawable.ic_heart_outline)
+        ImageViewCompat.setImageTintList(
+            button,
+            ColorStateList.valueOf(
+                ContextCompat.getColor(
+                    context,
+                    if (isLiked) R.color.accent_lavender else R.color.text_secondary
+                )
+            )
+        )
+        button.contentDescription = if (isLiked) "Unlike song" else "Like song"
+    }
+
     @DrawableRes
     private fun primaryControlIcon(isPlaying: Boolean, shouldRestartQueue: Boolean): Int {
         if (shouldRestartQueue) return R.drawable.ml_replay

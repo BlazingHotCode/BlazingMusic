@@ -19,6 +19,7 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -53,6 +54,7 @@ class YouTubeSearchFragment : Fragment() {
     private lateinit var adapter: YouTubeSearchAdapter
 
     private val apiClient by lazy { YouTubeApiClient(requireContext().applicationContext) }
+    private val musicViewModel: MusicViewModel by activityViewModels()
     private var activeJob: Job? = null
     private var inputJob: Job? = null
     private var selectedFilter: YouTubeSearchFilter = YouTubeSearchFilter.ALL
@@ -346,7 +348,15 @@ class YouTubeSearchFragment : Fragment() {
                 popup.menu.add(0, MENU_PLAY_NOW, 0, "Play now")
                 popup.menu.add(0, MENU_PLAY_NEXT, 1, "Play next")
                 popup.menu.add(0, MENU_ADD_QUEUE, 2, "Add to queue")
-                popup.menu.add(0, MENU_SONG_RADIO_UP_NEXT, 3, "Song radio (Up next)")
+                if (!item.videoId.isNullOrBlank() && musicViewModel.canToggleSongLike(item.toPlaceholderSong())) {
+                    popup.menu.add(
+                        0,
+                        MENU_TOGGLE_LIKE,
+                        3,
+                        if (musicViewModel.isVideoLiked(item.videoId)) "Unlike" else "Like"
+                    )
+                }
+                popup.menu.add(0, MENU_SONG_RADIO_UP_NEXT, 4, "Song radio (Up next)")
             }
             YouTubeItemType.ALBUM -> {
                 popup.menu.add(0, MENU_OPEN_ALBUM, 0, "Open album")
@@ -365,6 +375,10 @@ class YouTubeSearchFragment : Fragment() {
                 }
                 MENU_ADD_QUEUE -> {
                     enqueueSong(item, playNext = false)
+                    true
+                }
+                MENU_TOGGLE_LIKE -> {
+                    toggleSongLike(item)
                     true
                 }
                 MENU_SONG_RADIO_UP_NEXT -> {
@@ -605,8 +619,9 @@ class YouTubeSearchFragment : Fragment() {
         private const val MENU_PLAY_NOW = 1
         private const val MENU_PLAY_NEXT = 2
         private const val MENU_ADD_QUEUE = 3
-        private const val MENU_SONG_RADIO_UP_NEXT = 4
-        private const val MENU_OPEN_ALBUM = 5
+        private const val MENU_TOGGLE_LIKE = 4
+        private const val MENU_SONG_RADIO_UP_NEXT = 5
+        private const val MENU_OPEN_ALBUM = 6
         private const val RADIO_INITIAL_READY = 10
         private const val RADIO_TARGET_SIZE = 30
         private const val RADIO_CANDIDATE_LIMIT = 60
@@ -620,6 +635,47 @@ class YouTubeSearchFragment : Fragment() {
                 }
             }
         }
+    }
+
+    private fun toggleSongLike(item: YouTubeVideo) {
+        val placeholderSong = item.toPlaceholderSong()
+        if (!musicViewModel.canToggleSongLike(placeholderSong)) {
+            showToast("Sign in to like YouTube songs")
+            return
+        }
+        val willLike = !musicViewModel.isVideoLiked(item.videoId)
+        if (!willLike) {
+            if (musicViewModel.setSongLiked(placeholderSong, liked = false)) {
+                showToast("Removed from Liked Music")
+            }
+            return
+        }
+
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            val song = resolvePlayableSong(item) ?: run {
+                showToast("Could not resolve this song")
+                return@launch
+            }
+            if (musicViewModel.setSongLiked(song, liked = true)) {
+                showToast("Added to Liked Music")
+            }
+        }
+    }
+
+    private fun YouTubeVideo.toPlaceholderSong(): Song {
+        val videoId = videoId.orEmpty()
+        return Song(
+            id = videoId.hashCode().toLong(),
+            title = title,
+            artist = channelTitle.ifBlank { "YouTube Music" },
+            album = sectionTitle ?: "YouTube Music",
+            duration = 0L,
+            dateAddedSeconds = 0L,
+            path = "https://music.youtube.com/watch?v=$videoId",
+            albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(thumbnailUrl, videoId),
+            sourceVideoId = videoId
+        )
     }
 
 }

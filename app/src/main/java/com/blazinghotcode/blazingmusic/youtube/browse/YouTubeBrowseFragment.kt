@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -30,11 +31,13 @@ import kotlin.random.Random
  */
 class YouTubeBrowseFragment : Fragment() {
     private lateinit var btnBack: ImageButton
+    private lateinit var btnPageOptions: ImageButton
     private lateinit var tvTitle: TextView
     private lateinit var rvBrowseResults: RecyclerView
     private lateinit var adapter: YouTubeBrowseAdapter
 
     private val apiClient by lazy { YouTubeApiClient(requireContext().applicationContext) }
+    private val musicViewModel: MusicViewModel by activityViewModels()
     private var activeJob: Job? = null
 
     private var browseId: String = ""
@@ -44,12 +47,14 @@ class YouTubeBrowseFragment : Fragment() {
     private var browseThumb: String? = null
     private var browseType: YouTubeItemType = YouTubeItemType.UNKNOWN
     private var loadedItems: List<YouTubeVideo> = emptyList()
+    private var remoteItems: List<YouTubeVideo> = emptyList()
     private var cachedQueueSignature: String? = null
     private var cachedResolvedQueue: List<Song> = emptyList()
     private var artistInfo: YouTubeArtistInfo? = null
     private var stateMessage: String = ""
     private var continuationToken: String? = null
     private var isLoadingMore = false
+    private var playlistSortMode: PlaylistSortMode = PlaylistSortMode.DEFAULT
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,6 +93,7 @@ class YouTubeBrowseFragment : Fragment() {
 
     private fun bindViews(root: View) {
         btnBack = root.findViewById(R.id.btnBack)
+        btnPageOptions = root.findViewById(R.id.btnPageOptions)
         tvTitle = root.findViewById(R.id.tvTitle)
         rvBrowseResults = root.findViewById(R.id.rvBrowseResults)
         tvTitle.text = browseTypeLabelCapitalized()
@@ -105,6 +111,7 @@ class YouTubeBrowseFragment : Fragment() {
             }
         )
         adapter.setHideItemThumbnails(browseType == YouTubeItemType.ALBUM)
+        adapter.setAllowSongItemMenu(browseType == YouTubeItemType.PLAYLIST)
         rvBrowseResults.layoutManager = LinearLayoutManager(requireContext())
         rvBrowseResults.adapter = adapter
         rvBrowseResults.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -122,6 +129,8 @@ class YouTubeBrowseFragment : Fragment() {
 
     private fun setupActions() {
         btnBack.setOnClickListener { parentFragmentManager.popBackStack() }
+        btnPageOptions.visibility = if (browseType == YouTubeItemType.PLAYLIST) View.VISIBLE else View.GONE
+        btnPageOptions.setOnClickListener { showPlaylistPageOptions(it) }
     }
 
     private fun loadBrowse() {
@@ -138,7 +147,8 @@ class YouTubeBrowseFragment : Fragment() {
                 apiClient.browseCollectionPage(browseId, browseParams)
             }.getOrNull() ?: YouTubeBrowsePage(emptyList())
 
-            loadedItems = page.items
+            remoteItems = sanitizeRemoteItems(page.items)
+            loadedItems = applyPlaylistSort(remoteItems)
             artistInfo = page.artistInfo
             continuationToken = page.continuation
             hydrateBrowseChrome()
@@ -166,8 +176,9 @@ class YouTubeBrowseFragment : Fragment() {
                 return@launch
             }
             continuationToken = page.continuation
-            loadedItems = (loadedItems + page.items)
+            remoteItems = sanitizeRemoteItems(remoteItems + page.items)
                 .distinctBy { it.videoId ?: it.id }
+            loadedItems = applyPlaylistSort(remoteItems)
             hydrateBrowseChrome()
             adapter.submit(loadedItems)
             showState("Loaded ${loadedItems.size} ${browseTypeLabel()} items.")
@@ -593,6 +604,10 @@ class YouTubeBrowseFragment : Fragment() {
     }
 
     private fun showItemMenu(item: YouTubeVideo, anchor: View) {
+        if (browseType == YouTubeItemType.PLAYLIST && item.type == YouTubeItemType.SONG) {
+            showPlaylistSongMenu(item, anchor)
+            return
+        }
         val popup = PopupMenu(requireContext(), anchor)
         when (item.type) {
             YouTubeItemType.ALBUM -> popup.menu.add(0, MENU_OPEN_BROWSE, 0, "Open album")
@@ -610,6 +625,211 @@ class YouTubeBrowseFragment : Fragment() {
             }
         }
         popup.show()
+    }
+
+    private fun showPlaylistSongMenu(item: YouTubeVideo, anchor: View) {
+        PopupMenu(requireContext(), anchor).apply {
+            menu.add(0, MENU_PLAY_NEXT, 0, "Play next")
+            menu.add(0, MENU_ADD_TO_QUEUE, 1, "Add to queue")
+            val canLike = !item.videoId.isNullOrBlank() &&
+                YouTubeAccountStore.read(requireContext().applicationContext).isLoggedIn
+            if (canLike) {
+                menu.add(
+                    0,
+                    MENU_TOGGLE_LIKE,
+                    2,
+                    if (musicViewModel.isVideoLiked(item.videoId)) "Unlike" else "Like"
+                )
+            }
+            menu.add(0, MENU_REMOVE_FROM_PLAYLIST, 3, "Remove from playlist")
+            if (playlistSortMode == PlaylistSortMode.DEFAULT) {
+                menu.add(0, MENU_MOVE_UP, 4, "Move up")
+                menu.add(0, MENU_MOVE_DOWN, 5, "Move down")
+            }
+            setOnMenuItemClickListener { selected ->
+                when (selected.itemId) {
+                    MENU_PLAY_NEXT -> {
+                        enqueuePlaylistSong(item, playNext = true)
+                        true
+                    }
+                    MENU_ADD_TO_QUEUE -> {
+                        enqueuePlaylistSong(item, playNext = false)
+                        true
+                    }
+                    MENU_TOGGLE_LIKE -> {
+                        togglePlaylistSongLike(item)
+                        true
+                    }
+                    MENU_REMOVE_FROM_PLAYLIST -> {
+                        removeSongFromCurrentPlaylist(item)
+                        true
+                    }
+                    MENU_MOVE_UP -> {
+                        moveSongInCurrentPlaylist(item, up = true)
+                        true
+                    }
+                    MENU_MOVE_DOWN -> {
+                        moveSongInCurrentPlaylist(item, up = false)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
+    }
+
+    private fun togglePlaylistSongLike(item: YouTubeVideo) {
+        val videoId = item.videoId
+        if (videoId.isNullOrBlank()) {
+            showToast("This track cannot be liked")
+            return
+        }
+        val willLike = !musicViewModel.isVideoLiked(videoId)
+        if (!willLike) {
+            val success = musicViewModel.setSongLiked(
+                Song(
+                    id = videoId.hashCode().toLong(),
+                    title = item.title,
+                    artist = item.channelTitle.ifBlank { "YouTube Music" },
+                    album = "YouTube Music",
+                    duration = 0L,
+                    dateAddedSeconds = 0L,
+                    path = "https://music.youtube.com/watch?v=$videoId",
+                    albumArtUri = item.thumbnailUrl,
+                    sourceVideoId = videoId
+                ),
+                liked = false
+            )
+            if (success) showToast("Removed from Liked Music") else showToast("Sign in to like YouTube songs")
+            return
+        }
+
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            val song = resolvePlayableSong(item)
+            if (song == null) {
+                showToast("Could not resolve this track")
+                return@launch
+            }
+            val success = musicViewModel.setSongLiked(song, liked = true)
+            if (success) showToast("Added to Liked Music") else showToast("Sign in to like YouTube songs")
+        }
+    }
+
+    private fun enqueuePlaylistSong(item: YouTubeVideo, playNext: Boolean) {
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            val song = resolvePlayableSong(item)
+            if (song == null) {
+                showToast("Could not resolve this track")
+                return@launch
+            }
+            val main = activity as? MainActivity ?: return@launch
+            if (playNext) {
+                main.addSongToPlayNext(song)
+                showToast("Queued to play next")
+            } else {
+                main.addSongToCurrentQueue(song)
+                showToast("Added to queue")
+            }
+        }
+    }
+
+    private fun removeSongFromCurrentPlaylist(item: YouTubeVideo) {
+        val playlistId = browseId.takeIf { it.isNotBlank() }
+        val videoId = item.videoId
+        val setVideoId = item.sourcePlaylistSetVideoId
+        if (playlistId.isNullOrBlank() || videoId.isNullOrBlank() || setVideoId.isNullOrBlank()) {
+            showToast("This playlist item cannot be edited")
+            return
+        }
+
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            showState("Removing song from playlist...")
+            val removed = runCatching {
+                apiClient.removeFromPlaylist(
+                    playlistId = playlistId,
+                    videoId = videoId,
+                    setVideoId = setVideoId
+                )
+            }.getOrDefault(false)
+            if (!removed) {
+                showState("Failed to update playlist.")
+                showToast("Could not remove song")
+                return@launch
+            }
+
+            val updated = remoteItems.toMutableList()
+            val removeIndex = updated.indexOfFirst {
+                it.sourcePlaylistSetVideoId == setVideoId ||
+                    (it.videoId == videoId && it.id == item.id)
+            }
+            if (removeIndex in updated.indices) {
+                updated.removeAt(removeIndex)
+            }
+            remoteItems = updated
+            loadedItems = applyPlaylistSort(remoteItems)
+            adapter.submit(loadedItems)
+            showState("Song removed from playlist.")
+            showToast("Removed from playlist")
+        }
+    }
+
+    private fun moveSongInCurrentPlaylist(item: YouTubeVideo, up: Boolean) {
+        if (playlistSortMode != PlaylistSortMode.DEFAULT) {
+            showToast("Switch to YouTube order before syncing reorder changes")
+            return
+        }
+        val playlistId = browseId.takeIf { it.isNotBlank() }
+        val currentSetVideoId = item.sourcePlaylistSetVideoId
+        if (playlistId.isNullOrBlank() || currentSetVideoId.isNullOrBlank()) {
+            showToast("This playlist item cannot be reordered")
+            return
+        }
+
+        val currentIndex = remoteItems.indexOfFirst { it.sourcePlaylistSetVideoId == currentSetVideoId }
+        if (currentIndex !in remoteItems.indices) return
+        val targetIndex = if (up) currentIndex - 1 else currentIndex + 1
+        if (targetIndex !in remoteItems.indices) return
+
+        val successorSetVideoId = if (up) {
+            remoteItems[targetIndex].sourcePlaylistSetVideoId
+        } else {
+            remoteItems.getOrNull(targetIndex + 1)?.sourcePlaylistSetVideoId
+        }
+
+        activeJob?.cancel()
+        activeJob = viewLifecycleOwner.lifecycleScope.launch {
+            showState("Updating playlist order...")
+            val moved = runCatching {
+                apiClient.moveSongInPlaylist(
+                    playlistId = playlistId,
+                    setVideoId = currentSetVideoId,
+                    successorSetVideoId = successorSetVideoId
+                )
+            }.getOrDefault(false)
+            if (!moved) {
+                showState("Failed to update playlist order.")
+                showToast("Could not reorder song")
+                return@launch
+            }
+
+            val mutable = remoteItems.toMutableList()
+            val movedSong = mutable.removeAt(currentIndex)
+            val insertAt = if (up) {
+                targetIndex
+            } else {
+                (targetIndex + 1).coerceAtMost(mutable.size)
+            }
+            mutable.add(insertAt, movedSong)
+            remoteItems = mutable
+            loadedItems = applyPlaylistSort(remoteItems)
+            adapter.submit(loadedItems)
+            showState("Playlist order updated.")
+            showToast("Playlist reordered")
+        }
     }
 
     private fun openNestedBrowse(item: YouTubeVideo) {
@@ -676,6 +896,65 @@ class YouTubeBrowseFragment : Fragment() {
             )
             .addToBackStack("youtube_browse")
             .commit()
+    }
+
+    private fun showPlaylistPageOptions(anchor: View) {
+        if (browseType != YouTubeItemType.PLAYLIST) return
+        PopupMenu(requireContext(), anchor).apply {
+            menu.add(0, MENU_SORT_DEFAULT, 0, "Sort: YouTube order")
+            menu.add(0, MENU_SORT_TITLE, 1, "Sort: Title (local)")
+            menu.add(0, MENU_SORT_ARTIST, 2, "Sort: Artist (local)")
+            setOnMenuItemClickListener { item ->
+                val nextSort = when (item.itemId) {
+                    MENU_SORT_DEFAULT -> PlaylistSortMode.DEFAULT
+                    MENU_SORT_TITLE -> PlaylistSortMode.TITLE
+                    MENU_SORT_ARTIST -> PlaylistSortMode.ARTIST
+                    else -> return@setOnMenuItemClickListener false
+                }
+                if (playlistSortMode == nextSort) return@setOnMenuItemClickListener true
+                playlistSortMode = nextSort
+                loadedItems = applyPlaylistSort(remoteItems)
+                adapter.submit(loadedItems)
+                showState(
+                    when (playlistSortMode) {
+                        PlaylistSortMode.DEFAULT -> "Playlist sorted by YouTube order."
+                        PlaylistSortMode.TITLE -> "Playlist sorted by title locally only."
+                        PlaylistSortMode.ARTIST -> "Playlist sorted by artist locally only."
+                    }
+                )
+                true
+            }
+            show()
+        }
+    }
+
+    private fun applyPlaylistSort(items: List<YouTubeVideo>): List<YouTubeVideo> {
+        if (browseType != YouTubeItemType.PLAYLIST || items.isEmpty()) return items
+        return when (playlistSortMode) {
+            PlaylistSortMode.DEFAULT -> items
+            PlaylistSortMode.TITLE -> items.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+            PlaylistSortMode.ARTIST -> items.sortedWith(
+                Comparator { first, second ->
+                    val artistComparison = String.CASE_INSENSITIVE_ORDER.compare(
+                        first.channelTitle,
+                        second.channelTitle
+                    )
+                    if (artistComparison != 0) {
+                        artistComparison
+                    } else {
+                        String.CASE_INSENSITIVE_ORDER.compare(first.title, second.title)
+                    }
+                }
+            )
+        }
+    }
+
+    private fun sanitizeRemoteItems(items: List<YouTubeVideo>): List<YouTubeVideo> {
+        if (browseId != YouTubeAccountSurfaces.PLAYLISTS_BROWSE_ID) return items
+        return items.filterNot {
+            it.type == YouTubeItemType.PLAYLIST &&
+                it.browseId.equals(PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID, ignoreCase = true)
+        }
     }
 
     private fun hydrateBrowseChrome() {
@@ -836,8 +1115,23 @@ class YouTubeBrowseFragment : Fragment() {
         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
     }
 
+    private enum class PlaylistSortMode {
+        DEFAULT,
+        TITLE,
+        ARTIST
+    }
+
     companion object {
         private const val MENU_OPEN_BROWSE = 1
+        private const val MENU_PLAY_NEXT = 2
+        private const val MENU_ADD_TO_QUEUE = 3
+        private const val MENU_REMOVE_FROM_PLAYLIST = 4
+        private const val MENU_TOGGLE_LIKE = 5
+        private const val MENU_MOVE_UP = 6
+        private const val MENU_MOVE_DOWN = 7
+        private const val MENU_SORT_DEFAULT = 8
+        private const val MENU_SORT_TITLE = 9
+        private const val MENU_SORT_ARTIST = 10
         private const val QUEUE_APPEND_BATCH_SIZE = 8
         private const val RADIO_INITIAL_READY = 10
         private const val RADIO_TARGET_SIZE = 30

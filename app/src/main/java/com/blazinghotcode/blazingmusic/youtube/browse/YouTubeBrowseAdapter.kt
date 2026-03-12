@@ -42,6 +42,7 @@ class YouTubeBrowseAdapter(
 
     private val rows = mutableListOf<Row>()
     private var hideItemThumbnails = false
+    private var allowSongItemMenu = false
     private var headerModel: HeaderModel? = null
     private var browseType: YouTubeItemType = YouTubeItemType.UNKNOWN
 
@@ -60,6 +61,12 @@ class YouTubeBrowseAdapter(
     fun setHideItemThumbnails(hide: Boolean) {
         if (hideItemThumbnails == hide) return
         hideItemThumbnails = hide
+        notifyDataSetChanged()
+    }
+
+    fun setAllowSongItemMenu(allow: Boolean) {
+        if (allowSongItemMenu == allow) return
+        allowSongItemMenu = allow
         notifyDataSetChanged()
     }
 
@@ -113,7 +120,7 @@ class YouTubeBrowseAdapter(
 
         when (val row = rows[rowIndex(position)]) {
             is Row.Section -> (holder as SectionViewHolder).bind(row)
-            is Row.Item -> (holder as ItemViewHolder).bind(row.item, hideItemThumbnails)
+            is Row.Item -> (holder as ItemViewHolder).bind(row.item, hideItemThumbnails, allowSongItemMenu)
             is Row.HorizontalItems -> (holder as HorizontalSectionViewHolder).bind(row.items)
         }
     }
@@ -509,7 +516,7 @@ class YouTubeBrowseAdapter(
         private val subtitle: TextView = itemView.findViewById(R.id.tvChannelTitle)
         private val btnItemMore: ImageButton = itemView.findViewById(R.id.btnItemMore)
 
-        fun bind(video: YouTubeVideo, hideThumbnail: Boolean) {
+        fun bind(video: YouTubeVideo, hideThumbnail: Boolean, allowSongMenu: Boolean) {
             applyThumbnailMode(hideThumbnail)
             title.text = video.title
             val typeLabel = when (video.type) {
@@ -535,7 +542,8 @@ class YouTubeBrowseAdapter(
             val showMenu =
                 video.type == YouTubeItemType.ALBUM ||
                     video.type == YouTubeItemType.ARTIST ||
-                    video.type == YouTubeItemType.PLAYLIST
+                    video.type == YouTubeItemType.PLAYLIST ||
+                    (allowSongMenu && video.type == YouTubeItemType.SONG)
             btnItemMore.visibility = if (showMenu) View.VISIBLE else View.GONE
             btnItemMore.setOnClickListener(null)
             if (showMenu) {

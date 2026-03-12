@@ -285,6 +285,20 @@
             tools:text="Artist Name" />
 
         <ImageButton
+            android:id="@+id/btnLike"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginEnd="10dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Like"
+            android:src="@drawable/ic_heart_outline"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/btnQueue"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/btnQueue"
+            app:tint="@color/text_secondary" />
+
+        <ImageButton
             android:id="@+id/btnQueue"
             android:layout_width="24dp"
             android:layout_height="24dp"
@@ -319,7 +333,7 @@
             android:contentDescription="Repeat"
             android:src="@drawable/ml_repeat"
             app:layout_constraintBottom_toBottomOf="@id/btnQueue"
-            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btnLike"
             app:layout_constraintTop_toTopOf="@id/btnQueue"
             app:tint="@color/text_secondary" />
 
