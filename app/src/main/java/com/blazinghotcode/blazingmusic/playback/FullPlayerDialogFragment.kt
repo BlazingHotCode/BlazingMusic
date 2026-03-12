@@ -516,7 +516,7 @@ class FullPlayerDialogFragment : DialogFragment(R.layout.fragment_full_player) {
             title = item.title,
             artist = item.channelTitle.ifBlank { "YouTube Music" },
             album = "YouTube",
-            duration = 0L,
+            duration = item.durationMs ?: 0L,
             dateAddedSeconds = System.currentTimeMillis() / 1000,
             path = streamUrl,
             albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(item.thumbnailUrl, item.videoId),

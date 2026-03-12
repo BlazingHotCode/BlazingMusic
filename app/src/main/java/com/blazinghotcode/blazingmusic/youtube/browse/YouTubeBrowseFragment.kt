@@ -701,7 +701,7 @@ class YouTubeBrowseFragment : Fragment() {
                     title = item.title,
                     artist = item.channelTitle.ifBlank { "YouTube Music" },
                     album = "YouTube Music",
-                    duration = 0L,
+                    duration = item.durationMs ?: 0L,
                     dateAddedSeconds = 0L,
                     path = "https://music.youtube.com/watch?v=$videoId",
                     albumArtUri = item.thumbnailUrl,
@@ -1037,7 +1037,7 @@ class YouTubeBrowseFragment : Fragment() {
             title = title,
             artist = normalizedArtist,
             album = "YouTube",
-            duration = 0L,
+            duration = durationMs ?: 0L,
             dateAddedSeconds = System.currentTimeMillis() / 1000,
             path = streamUrl,
             sourceVideoId = videoId,
@@ -1084,11 +1084,14 @@ class YouTubeBrowseFragment : Fragment() {
 
     private fun refreshHeader() {
         val playableCount = loadedItems.count { !it.videoId.isNullOrBlank() }
-        val subtitle = buildString {
-            append(browseTypeLabel())
-            if (browseSubtitle.isNotBlank()) {
-                append(" • ")
-                append(browseSubtitle)
+        val subtitle = when (browseType) {
+            YouTubeItemType.PLAYLIST -> buildPlaylistMetadataSubtitle(loadedItems)
+            else -> buildString {
+                append(browseTypeLabel())
+                if (browseSubtitle.isNotBlank()) {
+                    append(" • ")
+                    append(browseSubtitle)
+                }
             }
         }
         adapter.setHeader(
@@ -1106,6 +1109,25 @@ class YouTubeBrowseFragment : Fragment() {
                 canShuffle = playableCount > 1
             )
         )
+    }
+
+    private fun buildPlaylistMetadataSubtitle(items: List<YouTubeVideo>): String {
+        val songCount = items.count { !it.videoId.isNullOrBlank() }
+        val totalDurationMs = items.sumOf { it.durationMs ?: 0L }
+        val countLabel = "$songCount ${if (songCount == 1) "song" else "songs"}"
+        val durationLabel = totalDurationMs.takeIf { it > 0L }?.let(::formatCollectionDuration)
+        return listOf(countLabel, durationLabel).filterNotNull().joinToString(" • ")
+    }
+
+    private fun formatCollectionDuration(durationMs: Long): String {
+        val totalMinutes = durationMs / 1000L / 60L
+        val hours = totalMinutes / 60L
+        val minutes = totalMinutes % 60L
+        return when {
+            hours > 0L && minutes > 0L -> "${hours}h ${minutes}m"
+            hours > 0L -> "${hours}h"
+            else -> "${minutes}m"
+        }
     }
 
     private fun showArtistPageOptionsDialog() {

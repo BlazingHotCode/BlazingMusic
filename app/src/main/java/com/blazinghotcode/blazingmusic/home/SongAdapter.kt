@@ -19,6 +19,7 @@ class SongAdapter(
     private var isSelectionModeEnabled = false
     private val selectedSongPaths = linkedSetOf<String>()
     private var currentSongKey: String? = null
+    private var likedVideoIds: Set<String> = emptySet()
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
         val binding = ItemSongBinding.inflate(
@@ -48,6 +49,12 @@ class SongAdapter(
         val newKey = currentSongIdentity(song)
         if (currentSongKey == newKey) return
         currentSongKey = newKey
+        notifyDataSetChanged()
+    }
+
+    fun setLikedVideoIds(videoIds: Set<String>) {
+        if (likedVideoIds == videoIds) return
+        likedVideoIds = videoIds
         notifyDataSetChanged()
     }
 
@@ -110,6 +117,7 @@ class SongAdapter(
             binding.tvArtist.text = song.artist
             binding.tvDuration.text = PlaybackTimeFormatter.formatDuration(song.duration)
             binding.tvNowPlaying.visibility = if (isNowPlaying) View.VISIBLE else View.GONE
+            binding.ivLiked.visibility = if (song.sourceVideoId in likedVideoIds) View.VISIBLE else View.GONE
             binding.root.setBackgroundResource(
                 if (isNowPlaying) R.drawable.bg_song_item_now_playing else R.drawable.bg_song_item
             )

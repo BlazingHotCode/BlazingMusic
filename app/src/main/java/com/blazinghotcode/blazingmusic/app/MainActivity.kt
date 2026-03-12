@@ -580,7 +580,9 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.likedSongsRevision.observe(this) {
             updateLikeUi(viewModel.currentSong.value)
+            songAdapter.setLikedVideoIds(viewModel.likedVideoIds())
         }
+        songAdapter.setLikedVideoIds(viewModel.likedVideoIds())
 
         viewModel.queue.observe(this) { queue ->
             queueSongs = queue
@@ -2145,7 +2147,7 @@ class MainActivity : AppCompatActivity() {
             title = title,
             artist = channelTitle.ifBlank { "YouTube Music" },
             album = sectionTitle ?: "YouTube Music",
-            duration = 0L,
+            duration = durationMs ?: 0L,
             dateAddedSeconds = 0L,
             path = "https://music.youtube.com/watch?v=$videoId",
             albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(thumbnailUrl, videoId),
@@ -2160,7 +2162,7 @@ class MainActivity : AppCompatActivity() {
             title = title,
             artist = channelTitle.ifBlank { "YouTube Music" },
             album = sectionTitle ?: "YouTube",
-            duration = 0L,
+            duration = durationMs ?: 0L,
             dateAddedSeconds = System.currentTimeMillis() / 1000,
             path = streamUrl,
             albumArtUri = YouTubeThumbnailUtils.toPlaybackArtworkUrl(thumbnailUrl, videoId),

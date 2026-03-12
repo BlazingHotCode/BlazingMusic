@@ -47,14 +47,7 @@ class PlaylistAdapter(
 
         fun bind(playlist: Playlist) {
             binding.tvPlaylistName.text = playlist.name
-            binding.tvPlaylistCount.text = when {
-                playlist.isRemoteSystemPlaylist() -> "Signed-in YouTube"
-                playlist.isYouTubeLikedSystemPlaylist() -> "Synced with YouTube likes"
-                else -> {
-                    val songsWord = if (playlist.songPaths.size == 1) "song" else "songs"
-                    "${playlist.songPaths.size} $songsWord"
-                }
-            }
+            binding.tvPlaylistCount.text = playlistMetadata(playlist)
 
             val iconPadding = (12 * binding.root.resources.displayMetrics.density).toInt()
             binding.ivPlaylist.setPadding(iconPadding, iconPadding, iconPadding, iconPadding)
@@ -64,16 +57,6 @@ class PlaylistAdapter(
                 binding.ivPlaylist.imageTintList =
                     ContextCompat.getColorStateList(binding.root.context, R.color.accent_lavender)
                 binding.ivPlaylist.contentDescription = "Local music playlist"
-            } else if (playlist.isYouTubeLikedSystemPlaylist()) {
-                binding.ivPlaylist.setImageResource(R.drawable.ic_account)
-                binding.ivPlaylist.imageTintList =
-                    ContextCompat.getColorStateList(binding.root.context, R.color.accent_lavender)
-                binding.ivPlaylist.contentDescription = "Liked music playlist"
-            } else if (playlist.isRemoteSystemPlaylist()) {
-                binding.ivPlaylist.setImageResource(R.drawable.ic_account)
-                binding.ivPlaylist.imageTintList =
-                    ContextCompat.getColorStateList(binding.root.context, R.color.text_primary)
-                binding.ivPlaylist.contentDescription = "YouTube account surface"
             } else {
                 binding.ivPlaylist.setImageResource(R.drawable.ml_playlist_play)
                 binding.ivPlaylist.imageTintList =
@@ -90,7 +73,32 @@ class PlaylistAdapter(
                         crossfade(true)
                     }
                     binding.ivPlaylist.contentDescription = "Playlist artwork"
-                }
+            }
+        }
+
+        private fun playlistMetadata(playlist: Playlist): String {
+            val songCount = when {
+                playlist.songs.isNotEmpty() -> playlist.songs.size
+                playlist.songPaths.isNotEmpty() -> playlist.songPaths.size
+                else -> 0
+            }
+            if (songCount == 0 && playlist.isRemoteSystemPlaylist()) return "Playlist"
+            val durationMs = playlist.songs.sumOf { it.duration.coerceAtLeast(0L) }
+            val countLabel = "$songCount ${if (songCount == 1) "song" else "songs"}"
+            val durationLabel = durationMs.takeIf { it > 0L }?.let(::formatPlaylistDuration)
+            return listOf(countLabel, durationLabel).filterNotNull().joinToString(" • ")
+                .ifBlank { "Playlist" }
+        }
+
+        private fun formatPlaylistDuration(durationMs: Long): String {
+            val totalMinutes = durationMs / 1000L / 60L
+            val hours = totalMinutes / 60L
+            val minutes = totalMinutes % 60L
+            return when {
+                hours > 0L && minutes > 0L -> "${hours}h ${minutes}m"
+                hours > 0L -> "${hours}h"
+                else -> "${minutes}m"
+            }
         }
     }
 

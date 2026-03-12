@@ -120,7 +120,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         maxResults: Int = 300
     ): YouTubeBrowsePage {
         if (browseId.isBlank()) return YouTubeBrowsePage(emptyList())
-        val capped = maxResults.coerceIn(1, 2000)
+        val capped = maxResults.coerceIn(1, 10_000)
         val initialBody = JSONObject()
             .put("context", contextObject())
             .put("browseId", browseId)
@@ -136,7 +136,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         var artistInfo: YouTubeArtistInfo? = null
         var lastContinuation: String? = null
         var pages = 0
-        while (root != null && pages < 8 && collected.size < capped) {
+        while (root != null && pages < 256 && collected.size < capped) {
             pages += 1
             if (artistInfo == null) {
                 artistInfo = parseArtistInfo(root)
@@ -170,14 +170,14 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         maxResults: Int = 300
     ): YouTubeBrowsePage {
         if (continuation.isBlank()) return YouTubeBrowsePage(emptyList())
-        val capped = maxResults.coerceIn(1, 1000)
+        val capped = maxResults.coerceIn(1, 10_000)
         val visitedContinuations = hashSetOf<String>()
         val seen = hashSetOf<String>()
         val collected = mutableListOf<YouTubeVideo>()
         var nextContinuation: String? = continuation.takeIf { visitedContinuations.add(it) }
         var root: JSONObject? = null
         var pages = 0
-        while (!nextContinuation.isNullOrBlank() && pages < 6 && collected.size < capped) {
+        while (!nextContinuation.isNullOrBlank() && pages < 256 && collected.size < capped) {
             pages += 1
             root = post(
                 "browse",
@@ -1453,6 +1453,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         val type = detectType(renderer, shelfTitle, videoId != null)
         val subtitle = extractSubtitle(secondRuns, type)
         val thumb = extractThumbnail(renderer)
+        val durationMs = extractDurationMs(renderer)
 
         val stableId = when {
             videoId != null -> "video:$videoId"
@@ -1465,6 +1466,7 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             title = decodeHtmlEntities(title),
             channelTitle = decodeHtmlEntities(subtitle),
             thumbnailUrl = thumb,
+            durationMs = durationMs,
             sectionTitle = shelfTitle?.let(::decodeHtmlEntities),
             sectionBrowseId = shelfBrowseId,
             sectionBrowseParams = shelfBrowseParams,
@@ -1477,6 +1479,30 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             sourceParams = sourceWatchEndpoint?.params,
             sourceIndex = sourceWatchEndpoint?.index
         )
+    }
+
+    private fun extractDurationMs(renderer: JSONObject): Long? {
+        val durationText = renderer
+            .optJSONArray("fixedColumns")
+            ?.optJSONObject(0)
+            ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
+            ?.optJSONObject("text")
+            ?.optJSONArray("runs")
+            ?.optJSONObject(0)
+            ?.optString("text", "")
+            ?.trim()
+            .orEmpty()
+
+        if (durationText.isBlank()) return null
+        val parts = durationText.split(':')
+            .mapNotNull { it.toLongOrNull() }
+        if (parts.isEmpty() || parts.size > 3) return null
+        val totalSeconds = when (parts.size) {
+            3 -> parts[0] * 3600 + parts[1] * 60 + parts[2]
+            2 -> parts[0] * 60 + parts[1]
+            else -> parts[0]
+        }
+        return totalSeconds * 1000L
     }
 
     private fun extractWatchEndpointFromRenderer(renderer: JSONObject): RadioWatchEndpoint? {

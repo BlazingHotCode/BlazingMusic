@@ -37,7 +37,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_YOUTUBE_LIKED_SONGS_JSON = "youtube_liked_songs_json"
         private const val LOCAL_MUSIC_PLAYLIST_ID = PlaylistSystem.LOCAL_MUSIC_ID
         private const val YOUTUBE_LIKED_MUSIC_PLAYLIST_ID = PlaylistSystem.YOUTUBE_LIKED_MUSIC_ID
-        private const val YOUTUBE_LIKED_MAX_RESULTS = 500
+        private const val YOUTUBE_LIKED_MAX_RESULTS = 5000
         private const val YOUTUBE_PLACEHOLDER_URL_PREFIX = "https://music.youtube.com/watch?v="
         private const val PREVIOUS_RESTART_THRESHOLD_MS = 4_000L
         private const val TAG = "MusicViewModel"
@@ -745,14 +745,20 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         return accountLikedSongs.any { it.sourceVideoId == normalized }
     }
 
+    fun likedVideoIds(): Set<String> {
+        return accountLikedSongs.mapNotNull { it.sourceVideoId?.takeIf { id -> id.isNotBlank() } }.toSet()
+    }
+
     fun setSongLiked(song: Song, liked: Boolean): Boolean {
         val videoId = song.sourceVideoId?.takeIf { it.isNotBlank() } ?: return false
         val account = YouTubeAccountStore.read(getApplication<Application>().applicationContext)
         if (!account.isLoggedIn) return false
+        if (liked && isVideoLiked(videoId)) return true
         if (!liked && !isVideoLiked(videoId)) return true
         if (videoId in pendingLikeRequests) return false
 
         val previousSongs = accountLikedSongs
+        val existingLikedSong = previousSongs.firstOrNull { it.sourceVideoId == videoId }
         val normalizedSong = normalizedLikedSong(song)
         accountLikedSongs = when {
             liked -> listOf(normalizedSong) + accountLikedSongs.filterNot { it.sourceVideoId == videoId }
@@ -762,11 +768,28 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         pendingLikeRequests += videoId
 
         viewModelScope.launch {
-            val success = runCatching { youTubeApiClient.likeVideo(videoId, liked) }.getOrDefault(false)
+            val success = runCatching {
+                if (liked) {
+                    youTubeApiClient.addVideoToPlaylist(PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID, videoId)
+                } else {
+                    val setVideoId = existingLikedSong?.sourcePlaylistSetVideoId.orEmpty()
+                    if (setVideoId.isBlank()) {
+                        false
+                    } else {
+                        youTubeApiClient.removeFromPlaylist(
+                            PlaylistSystem.YOUTUBE_LIKED_MUSIC_BROWSE_ID,
+                            videoId,
+                            setVideoId
+                        )
+                    }
+                }
+            }.getOrDefault(false)
             pendingLikeRequests.remove(videoId)
             if (!success) {
                 accountLikedSongs = previousSongs
                 publishLikedSongsState()
+            } else {
+                syncYouTubeLikedSongsPlaylist()
             }
         }
         return true

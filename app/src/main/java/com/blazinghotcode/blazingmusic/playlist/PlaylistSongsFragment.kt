@@ -336,7 +336,11 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
 
         viewModel.isShuffleEnabled.observe(viewLifecycleOwner) { enabled -> updateShuffleUi(enabled) }
         viewModel.repeatMode.observe(viewLifecycleOwner) { mode -> updateRepeatUi(mode) }
-        viewModel.likedSongsRevision.observe(viewLifecycleOwner) { updateLikeUi(viewModel.currentSong.value) }
+        viewModel.likedSongsRevision.observe(viewLifecycleOwner) {
+            updateLikeUi(viewModel.currentSong.value)
+            songAdapter.setLikedVideoIds(viewModel.likedVideoIds())
+        }
+        songAdapter.setLikedVideoIds(viewModel.likedVideoIds())
     }
 
     private fun showSongOptionsMenu(song: Song, anchor: View) {
@@ -454,10 +458,10 @@ class PlaylistSongsFragment : Fragment(R.layout.fragment_playlist_songs) {
         btnShuffleList.setOnClickListener {
             val source = if (filteredSongs.isNotEmpty()) filteredSongs else playlistSongs
             source.shuffled().firstOrNull()?.let { first ->
-                viewModel.playSongFromQueue(first, source)
                 if (viewModel.isShuffleEnabled.value != true) {
                     viewModel.toggleShuffle()
                 }
+                viewModel.playSongFromQueue(first, source)
             } ?: showToast("No songs in playlist")
         }
         btnSortList.setOnClickListener { showSortOptionsMenu() }
