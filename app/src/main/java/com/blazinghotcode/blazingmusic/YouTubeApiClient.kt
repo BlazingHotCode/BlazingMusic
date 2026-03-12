@@ -516,6 +516,39 @@ class YouTubeApiClient(private val appContext: Context? = null) {
         return resolveAudioStreamUrlInternal(videoId, allowCache = true)
     }
 
+    suspend fun fetchAccountDisplayName(
+        cookie: String,
+        visitorData: String,
+        dataSyncId: String
+    ): String? {
+        val auth = YouTubeAccountStore.AccountAuth(
+            cookie = cookie,
+            visitorData = visitorData,
+            dataSyncId = dataSyncId,
+            accountName = ""
+        )
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val url = URL("https://music.youtube.com/")
+                val connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 12_000
+                    readTimeout = 15_000
+                    setRequestProperty("User-Agent", USER_AGENT_WEB)
+                    setRequestProperty("Accept", "text/html")
+                    setRequestProperty("Referer", "https://music.youtube.com/")
+                    applyAccountHeaders(this, auth)
+                }
+                try {
+                    val html = connection.inputStream.bufferedReader().use { it.readText() }
+                    extractAccountNameFromHtml(html)
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrNull()
+        }
+    }
+
     suspend fun resolveAudioStreamUrlFresh(videoId: String): String? {
         return resolveAudioStreamUrlInternal(videoId, allowCache = false)
     }
@@ -929,6 +962,17 @@ class YouTubeApiClient(private val appContext: Context? = null) {
             .digest(input.toByteArray(Charsets.UTF_8))
             .joinToString("") { byte -> "%02x".format(byte) }
         return "SAPISIDHASH ${timestamp}_$digest"
+    }
+
+    private fun extractAccountNameFromHtml(html: String): String? {
+        val patterns = listOf(
+            Regex("\"accountName\":\"([^\"]+)\""),
+            Regex("\"name\":\"([^\"]+)\",\"email\":"),
+            Regex("aria-label=\"Google Account: ([^\"]+)\"")
+        )
+        return patterns.firstNotNullOfOrNull { regex ->
+            regex.find(html)?.groupValues?.getOrNull(1)
+        }?.trim()?.takeIf { it.isNotBlank() }
     }
 
     private fun parseShelfItems(root: JSONObject): List<YouTubeVideo> {

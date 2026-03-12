@@ -50,6 +50,11 @@
                 android:exported="false"
                 android:theme="@style/Theme.BlazingMusic" />
 
+        <activity
+                android:name=".YouTubeLoginActivity"
+                android:exported="false"
+                android:theme="@style/Theme.BlazingMusic" />
+
         <!-- ============== MUSIC SERVICE ============== -->
         <!-- Background media playback service -->
         <service

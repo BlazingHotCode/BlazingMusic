@@ -114,7 +114,7 @@
                         android:layout_height="40dp"
                         android:background="@drawable/bg_secondary_action_button"
                         android:minWidth="110dp"
-                        android:text="Add login"
+                        android:text="Google login"
                         android:textAllCaps="false"
                         android:textColor="@color/text_primary"
                         android:textStyle="bold" />
