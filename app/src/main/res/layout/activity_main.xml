@@ -130,6 +130,16 @@
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
+        <TextView
+            android:id="@+id/tvHomeAccountStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Guest recommendations"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
         <com.google.android.material.chip.ChipGroup
             android:id="@+id/chipGroupHomeRecentSearches"
             android:layout_width="match_parent"

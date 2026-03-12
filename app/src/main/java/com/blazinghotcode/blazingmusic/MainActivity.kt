@@ -111,6 +111,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnHomeStateAction: Button
     private lateinit var tvHomeTitle: TextView
     private lateinit var homeDiscoveryCard: View
+    private lateinit var tvHomeAccountStatus: TextView
     private lateinit var chipGroupHomeRecentSearches: ChipGroup
     private lateinit var btnHomeExploreOnline: Button
     private lateinit var songAlphabetIndex: AlphabetIndexView
@@ -138,6 +139,7 @@ class MainActivity : AppCompatActivity() {
     private var homeFeedErrorMessage: String? = null
     private var isHomeFeedLoading = false
     private var homeFeedLastUpdatedLabel: String? = null
+    private var lastHomeAccountFingerprint: String? = null
     private val sortPrefs by lazy {
         getSharedPreferences(SORT_PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -253,6 +255,7 @@ class MainActivity : AppCompatActivity() {
         btnHomeStateAction = findViewById(R.id.btnHomeStateAction)
         tvHomeTitle = findViewById(R.id.tvTitle)
         homeDiscoveryCard = findViewById(R.id.homeDiscoveryCard)
+        tvHomeAccountStatus = findViewById(R.id.tvHomeAccountStatus)
         chipGroupHomeRecentSearches = findViewById(R.id.chipGroupHomeRecentSearches)
         btnHomeExploreOnline = findViewById(R.id.btnHomeExploreOnline)
         songAlphabetIndex = findViewById(R.id.songAlphabetIndex)
@@ -1460,6 +1463,7 @@ class MainActivity : AppCompatActivity() {
         if (hasAudioPermission && hasNotificationPermission && allSongs.isEmpty()) {
             viewModel.loadSongs()
         }
+        maybeRefreshHomeForAccountChange()
         updateHomeLibraryStateUi()
         refreshHomeDiscovery()
         handler.post(updateSeekbarRunnable)
@@ -1564,6 +1568,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun refreshHomeDiscovery() {
+        val account = YouTubeAccountStore.read(this)
+        tvHomeAccountStatus.text = if (account.isLoggedIn) {
+            val accountName = account.accountName.ifBlank { "Connected account" }
+            "Personalized for $accountName"
+        } else {
+            "Guest recommendations"
+        }
         val recentQueries = YouTubeSearchHistoryStore.load(this)
         chipGroupHomeRecentSearches.removeAllViews()
         recentQueries.forEach { query ->
@@ -1579,6 +1590,28 @@ class MainActivity : AppCompatActivity() {
         }
         chipGroupHomeRecentSearches.visibility = if (recentQueries.isEmpty()) View.GONE else View.VISIBLE
         homeDiscoveryCard.visibility = if (currentBottomTab == BottomTab.HOME) View.VISIBLE else View.GONE
+    }
+
+    private fun maybeRefreshHomeForAccountChange() {
+        val fingerprint = currentHomeAccountFingerprint()
+        if (lastHomeAccountFingerprint == fingerprint) return
+        lastHomeAccountFingerprint = fingerprint
+        homeFeedItems = emptyList()
+        homeFeedErrorMessage = null
+        homeFeedLastUpdatedLabel = null
+        if (currentBottomTab == BottomTab.HOME) {
+            refreshHomeFeed(forceRefresh = true)
+        }
+    }
+
+    private fun currentHomeAccountFingerprint(): String {
+        val account = YouTubeAccountStore.read(this)
+        return listOf(
+            account.cookie.take(48),
+            account.visitorData,
+            account.dataSyncId,
+            account.accountName
+        ).joinToString("|")
     }
 
     private fun refreshHomeFeed(forceRefresh: Boolean) {
@@ -1622,8 +1655,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindHomeFeedHeader() {
+        val account = YouTubeAccountStore.read(this)
         val subtitle = buildString {
-            append("Online shelves")
+            append(
+                if (account.isLoggedIn) {
+                    val accountName = account.accountName.ifBlank { "your account" }
+                    "Online shelves for $accountName"
+                } else {
+                    "Guest online shelves"
+                }
+            )
             homeFeedLastUpdatedLabel?.let {
                 append(" • ")
                 append(it)
@@ -1635,7 +1676,11 @@ class MainActivity : AppCompatActivity() {
                 title = greetingTitle(),
                 subtitle = subtitle,
                 artworkUrl = homeFeedItems.firstNotNullOfOrNull { it.thumbnailUrl },
-                stateMessage = "Quick picks, albums, playlists, and mixes from your online home.",
+                stateMessage = if (account.isLoggedIn) {
+                    "Quick picks, albums, playlists, and mixes tuned to your connected YouTube account."
+                } else {
+                    "Quick picks, albums, playlists, and mixes from the public online home."
+                },
                 artistInfo = null,
                 showArtistDescription = false,
                 showArtistSubscribers = false,
